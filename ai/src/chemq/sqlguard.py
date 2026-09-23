@@ -1,0 +1,93 @@
+"""SQL 护栏 —— 智能问数最重要、也最容易被跳过的一层。
+
+设计要点（面试可直接讲）：
+  1. 不用正则，用 sqlglot 解析成 AST 再判断。正则挡不住 `/*x*/DROP`、`; DELETE`。
+  2. 白名单而非黑名单：只允许 SELECT，且只允许访问语义层视图（不给 fact_* 明细表）。
+  3. 强制 LIMIT + statement_timeout —— 防一条 SQL 打爆生产库。
+  4. 执行账号是只读 role（chemq_ro）+ RLS。应用层校验 + 数据库权限 = 纵深防御，
+     护栏被绕过时数据库仍然兜底。
+"""
+from __future__ import annotations
+
+import sqlglot
+from sqlglot import exp
+
+from .schemas import GuardVerdict
+
+READ_ONLY_ROOTS = (exp.Select, exp.Union, exp.Except, exp.Intersect)
+
+WRITE_NODES = (
+    exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create,
+    exp.Alter, exp.Merge, exp.Command,
+)
+
+SENSITIVE_TOKENS = (
+    "pg_catalog", "information_schema", "pg_sleep", "pg_read_file",
+    "pg_ls_dir", "lo_import", "dblink", "copy ", "\\copy", "set role",
+)
+
+
+def _qualified(table: exp.Table) -> str:
+    db = table.text("db") or "chem"
+    return f"{db}.{table.name}".lower()
+
+
+def check(sql: str, allowed_relations: tuple[str, ...], max_rows: int = 500) -> GuardVerdict:
+    """返回 GuardVerdict；ok=True 时 rewritten_sql 是加过 LIMIT 的安全版本。"""
+    violations: list[str] = []
+
+    try:
+        statements = [s for s in sqlglot.parse(sql, read="postgres") if s is not None]
+    except Exception as e:  # noqa: BLE001
+        return GuardVerdict(ok=False, violations=[f"SQL 解析失败: {e}"])
+
+    if len(statements) != 1:
+        return GuardVerdict(
+            ok=False, violations=[f"只允许单条语句，实际解析出 {len(statements)} 条"]
+        )
+
+    stmt = statements[0]
+
+    if not isinstance(stmt, READ_ONLY_ROOTS):
+        return GuardVerdict(
+            ok=False, violations=[f"只允许 SELECT，收到 {type(stmt).__name__.upper()}"]
+        )
+
+    for node_type in WRITE_NODES:
+        if next(stmt.find_all(node_type), None) is not None:
+            violations.append(f"包含写操作节点: {node_type.__name__.upper()}")
+
+    allowed = {a.lower() for a in allowed_relations}
+    cte_names = {c.alias_or_name.lower() for c in stmt.find_all(exp.CTE)}
+    for table in stmt.find_all(exp.Table):
+        if table.name.lower() in cte_names and not table.text("db"):
+            continue
+        if _qualified(table) not in allowed:
+            violations.append(f"不允许访问 {_qualified(table)}；只能查语义层视图")
+
+    lowered = sql.lower()
+    for token in SENSITIVE_TOKENS:
+        if token in lowered:
+            violations.append(f"包含敏感操作: {token.strip()}")
+
+    if violations:
+        return GuardVerdict(ok=False, violations=sorted(set(violations)))
+
+    return GuardVerdict(ok=True, rewritten_sql=_force_limit(stmt, max_rows))
+
+
+def _force_limit(stmt: exp.Expression, max_rows: int) -> str:
+    """无 LIMIT 则加上；LIMIT 超上限则压到上限。"""
+    current = stmt.args.get("limit")
+    need_set = True
+    if current is not None:
+        try:
+            need_set = int(current.expression.name) > max_rows
+        except (AttributeError, ValueError):
+            need_set = True
+    if need_set:
+        try:
+            stmt = stmt.limit(max_rows)
+        except AttributeError:  # 极少数节点类型没有 .limit()
+            stmt.set("limit", exp.Limit(expression=exp.Literal.number(max_rows)))
+    return stmt.sql(dialect="postgres")

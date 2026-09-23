@@ -1,0 +1,27 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+bin/
+obj/
+cdk.out/
+eval-report*.json
+
+# 评测报告
+runs/
+
+# macOS
+.DS_Store
+
+# Claude 发过来的文件落在这里
+Claude outputs/
+
+# 杂项
+*.log
+*.pem
+.idea/

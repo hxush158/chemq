@@ -1,0 +1,14 @@
+{
+  // VS Code 会在打开这个项目时提示你安装这些。右下角弹窗点 Install。
+  "recommendations": [
+    "ms-python.python",              // Python 基础支持
+    "ms-python.vscode-pylance",      // 类型检查与跳转定义
+    "charliermarsh.ruff",            // 本项目用的 linter/formatter
+    "ms-azuretools.vscode-docker",   // 侧边栏管理容器，看日志不用敲命令
+    "mtxr.sqltools",                 // 在编辑器里直接连库写 SQL
+    "mtxr.sqltools-driver-pg",       // SQLTools 的 PostgreSQL 驱动
+    "ms-dotnettools.csdevkit",       // W5 才用得上（.NET 网关）
+    "anthropic.claude-code",         // Claude Code 的 VS Code 扩展
+    "yzhang.markdown-all-in-one"     // 写学习笔记用
+  ]
+}

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# 提交前拦一道：暂存区里有密钥就不让提交。
+# 装它：bash scripts/install-hooks.sh
+#
+# 为什么要有：密钥一旦推上 GitHub 就算泄露 —— 即使你下一秒 force push 删掉，
+# 它已经进了 GitHub 的事件流和各种爬虫。唯一正确的补救是立刻吊销并换新的。
+# 所以防线要放在 commit 之前，而不是 push 之后。
+set -uo pipefail
+
+PATTERNS=(
+  'sk-ant-[A-Za-z0-9_\-]{20,}'          # Anthropic API key
+  'sk-[A-Za-z0-9]{32,}'                 # 通用 OpenAI 风格 key
+  'AKIA[0-9A-Z]{16}'                    # AWS access key id
+  'ghp_[A-Za-z0-9]{30,}'                # GitHub personal token
+  '-----BEGIN [A-Z ]*PRIVATE KEY-----'  # 私钥
+)
+
+FOUND=0
+for p in "${PATTERNS[@]}"; do
+  # 只看暂存的内容，不看工作区
+  if hits=$(git diff --cached --no-color -U0 | grep -nE "^\+.*$p" 2>/dev/null); then
+    [ -n "$hits" ] && { printf "\033[31m✗ 暂存区里检测到疑似密钥：\033[0m\n"; echo "$hits" | sed 's/^/    /' | cut -c1-120; FOUND=1; }
+  fi
+done
+
+# .env 本身绝不该被提交
+if git diff --cached --name-only | grep -qE '(^|/)\.env$'; then
+  printf "\033[31m✗ .env 出现在暂存区 —— 它含真实 key，不能提交\033[0m\n"
+  printf "    git rm --cached .env\n"
+  FOUND=1
+fi
+
+if [ "$FOUND" -eq 1 ]; then
+  printf "\n  提交已阻止。确认是误报的话，用 git commit --no-verify 绕过（想清楚再用）。\n\n"
+  exit 1
+fi
+exit 0

@@ -1,0 +1,47 @@
+# ============================================================
+# 业务命名占位符 —— 唯一的真实信息入口
+# 拿到示例化工实际的装置/产品/客户命名后，只改这个文件，然后：
+#     make seed        # 重新生成数据
+# 代码和文档里不要出现硬编码的业务名称。
+# ============================================================
+company:
+  short: "示例化工"          # TODO: 替换
+  full:  "安徽化工集团有限公司"  # TODO: 替换
+
+# 装置 / 车间。design_capacity 单位：吨/天；公用工程填 null
+plants:
+  - {id: P01, name: "合成氨装置",  type: "生产装置", design_capacity: 900}
+  - {id: P02, name: "硝酸装置",    type: "生产装置", design_capacity: 600}
+  - {id: P03, name: "甲醇装置",    type: "生产装置", design_capacity: 800}
+  - {id: P04, name: "双氧水装置",  type: "生产装置", design_capacity: 300}
+  - {id: P05, name: "公用工程",    type: "公用工程", design_capacity: null}
+
+# 产品。std_price 单位：元/吨（不含税）
+products:
+  - {id: M01, name: "液氨",   grade: "优等品", std_price: 3100, plant: P01}
+  - {id: M02, name: "硝酸",   grade: "一等品", std_price: 1750, plant: P02}
+  - {id: M03, name: "甲醇",   grade: "优等品", std_price: 2450, plant: P03}
+  - {id: M04, name: "双氧水", grade: "合格品", std_price: 1150, plant: P04}
+
+customers:
+  - {id: C01, name: "客户A-皖江农资",  region: "华东", industry: "农化",     credit_days: 30}
+  - {id: C02, name: "客户B-长三角新材", region: "华东", industry: "新材料",   credit_days: 45}
+  - {id: C03, name: "客户C-中原化肥",  region: "华中", industry: "农化",     credit_days: 30}
+  - {id: C04, name: "客户D-岭南精化",  region: "华南", industry: "精细化工", credit_days: 60}
+  - {id: C05, name: "客户E-珠江贸易",  region: "华南", industry: "贸易",     credit_days: 60}
+  - {id: C06, name: "客户F-海外贸易",  region: "出口", industry: "贸易",     credit_days: 90}
+
+# 折标煤系数参照 GB/T 2589；换算口径以企业能源管理制度为准
+energy:
+  - {id: E01, name: "电",     uom: "kWh", coal_equiv: 0.1229, price: 0.62}
+  - {id: E02, name: "蒸汽",   uom: "t",   coal_equiv: 88.0,   price: 205.0}
+  - {id: E03, name: "天然气", uom: "Nm3", coal_equiv: 1.2143, price: 3.15}
+  - {id: E04, name: "新鲜水", uom: "t",   coal_equiv: 0.0857, price: 4.30}
+
+# --- 合成数据里刻意埋的"可被问出来"的现象。评测集的标准答案依赖它们 ---
+scenarios:
+  date_range: {start: "2025-10-01", end: "2026-09-30"}
+  overhaul:        {plant: P01, start: "2026-03-05", end: "2026-03-19", note: "计划大修"}
+  unplanned_stops: [{date: "2025-11-18", plant: P02}, {date: "2026-02-09", plant: P02}, {date: "2026-07-23", plant: P02}]
+  price_decline:   {product: M03, from: "2026-06-01", pct_over_120d: 0.13, note: "甲醇价格下行"}
+  cash_anomaly:    {region: "华南", year: 2026, month: 8, ratio: [0.28, 0.48], note: "回款率异常"}

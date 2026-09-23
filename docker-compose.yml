@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16      # 官方 postgres 镜像没带 pgvector，用这个
+    container_name: chemq-db
+    environment:
+      POSTGRES_DB: chemq
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: chemq
+      TZ: Pacific/Auckland
+    ports: ["5432:5432"]
+    volumes:
+      - chemq-pgdata:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro   # 首次启动自动执行 01→04
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chemq"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  chemq-pgdata:

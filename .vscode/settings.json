@@ -1,0 +1,51 @@
+{
+  // --- Python ---
+  // 解释器指向 uv 建的虚拟环境。先 make install，这个路径才会存在。
+  "python.defaultInterpreterPath": "${workspaceFolder}/ai/.venv/bin/python",
+  // 让 Pylance 能解析 `from chemq import ...`（源码在 ai/src 下）
+  "python.analysis.extraPaths": ["${workspaceFolder}/ai/src"],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["ai/tests"],
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+  },
+
+  // --- 终端 ---
+  // 让集成终端自动带上 .env 里的变量，这样直接敲 python 也能跑
+  "python.envFile": "${workspaceFolder}/.env",
+
+  // --- SQLTools：连库不用离开编辑器 ---
+  "sqltools.connections": [
+    {
+      "name": "ChemQ (只读，模型用的就是这个账号)",
+      "driver": "PostgreSQL",
+      "server": "localhost",
+      "port": 5432,
+      "database": "chemq",
+      "username": "chemq_ro_login",
+      "password": "chemq"
+    },
+    {
+      "name": "ChemQ (superuser，仅建表用)",
+      "driver": "PostgreSQL",
+      "server": "localhost",
+      "port": 5432,
+      "database": "chemq",
+      "username": "postgres",
+      "password": "chemq"
+    }
+  ],
+
+  // --- 杂项 ---
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true
+  },
+  "files.associations": { "*.jsonl": "jsonl" },
+  "search.exclude": { "ai/.venv": true, "db/02_seed.sql": true }
+}

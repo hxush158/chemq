@@ -1,0 +1,39 @@
+name: eval
+on: [push, pull_request]
+
+jobs:
+  test-and-eval:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env: {POSTGRES_DB: chemq, POSTGRES_USER: postgres, POSTGRES_PASSWORD: chemq}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 3s --health-retries 20
+    env:
+      PGPASSWORD: chemq
+      CHEMQ_PG_DSN: postgresql://postgres:chemq@localhost:5432/chemq
+      CHEMQ_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: 建库与导数
+        run: |
+          python db/gen_seed.py > db/02_seed.sql
+          psql "$CHEMQ_PG_DSN" -v ON_ERROR_STOP=1 \
+            -f db/01_schema.sql -f db/02_seed.sql -f db/03_semantic_views.sql -f db/04_roles.sql
+          python ai/evals/build_golden.py
+      - name: 单元测试（SQL 护栏）
+        run: cd ai && uv sync --extra dev && uv run pytest -q
+      - name: 评测集自检
+        run: python ai/evals/run_eval.py --week 6 --dry
+      # 跑真实评测要花钱。只在 main 分支跑，PR 上只跑自检。
+      - name: 评测
+        if: github.ref == 'refs/heads/main' && env.CHEMQ_ANTHROPIC_API_KEY != ''
+        run: python ai/evals/run_eval.py --week 6 --json eval-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: eval-report, path: eval-report.json, if-no-files-found: ignore}

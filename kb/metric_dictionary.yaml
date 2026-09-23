@@ -1,0 +1,88 @@
+# 指标口径字典（语义层的"人话"版本）
+# 这是智能问数准确率的第一杠杆：模型不猜口径，只引用这里的条目。
+# 每次请求都作为 system 前缀注入，并打 prompt cache。
+version: "2026-09"
+owner: "示例化工 · 信息部"
+metrics:
+  - name: 产量
+    en: output_qualified
+    unit: t
+    view: chem.v_plant_daily
+    column: 产量_t
+    definition: 合格品产量，不含返工量(rework_t)；口径与生产日报一致
+    pitfalls: ["不要用 output_t（总产出）代替，两者差 1%~3%"]
+
+  - name: 开车率
+    en: uptime_rate
+    unit: "%"
+    view: chem.v_plant_daily
+    column: 开车率_pct
+    definition: 装置当日实际运行小时 / 24
+    pitfalls: ["月度开车率取日均值，不是 sum(run_hours)/sum(24) 之外的任何写法"]
+
+  - name: 负荷率
+    en: load_rate
+    unit: "%"
+    view: chem.v_plant_daily
+    column: 负荷率_pct
+    definition: 合格产量 / 装置设计日产能
+    pitfalls: ["公用工程(P05)无设计产能，负荷率为 NULL，不要计入平均"]
+
+  - name: 一次合格率
+    en: first_pass_yield
+    unit: "%"
+    view: chem.v_plant_daily
+    column: 一次合格率_pct
+    definition: 合格品产量 / 总产出
+
+  - name: 单位产品综合能耗
+    en: unit_energy_consumption
+    unit: kgce/t
+    view: chem.v_energy_daily
+    column: 单位产品综合能耗_kgce_per_t
+    definition: Σ(各能源消耗量 × 折标煤系数) / 当期合格产量，参照 GB/T 2589
+    pitfalls:
+      - "折标系数唯一来源是 dim_energy_type.coal_equiv_coef，禁止在 SQL 里写死"
+      - "月度值 = 月度总折标能耗 / 月度总产量，不是日值的算术平均"
+
+  - name: 不含税收入
+    en: revenue_ex_tax
+    unit: CNY
+    view: chem.v_sales_daily
+    column: 不含税收入_cny
+    definition: 开票确认的不含税销售收入；退货在发生当期冲回
+
+  - name: 回款率
+    en: cash_collection_rate
+    unit: "%"
+    view: chem.v_sales_daily
+    column: 回款率_pct
+    definition: 期间回款金额 / 期间不含税收入
+    pitfalls: ["跨期回款不追溯调整，口径为'期间收付实现'，与财务应收账龄表口径不同"]
+
+  - name: 平均售价
+    en: asp
+    unit: CNY/t
+    view: chem.v_sales_daily
+    column: 平均售价_cny_per_t
+    definition: 不含税收入 / 销量；按期间汇总计算，不取日均值
+
+  - name: 非计划停车次数
+    en: unplanned_stops
+    unit: 次
+    view: chem.v_plant_daily
+    column: 非计划停车_次
+    definition: 计划外导致装置停车的次数，计划检修不计入
+
+dimensions:
+  - {name: 装置, view_column: plant_name, table: chem.dim_plant}
+  - {name: 产品, view_column: product_name, table: chem.dim_product}
+  - {name: 客户, view_column: customer_name, table: chem.dim_customer}
+  - {name: 大区, view_column: region, note: "华东/华中/华南/出口；受行级权限控制"}
+
+rules:
+  - "所有数值必须由 SQL 计算，模型不得自行算数、推算或补全缺失月份"
+  - "问题中出现字典里没有的指标时，必须拒答并说明缺哪个口径，不要用近似指标替代"
+  - "涉及成本、利润、人工成本的问题当前无数据源，一律拒答"
+  - "超出数据覆盖区间（见 naming.yaml scenarios.date_range）的时间段一律拒答，不要用现有区间近似"
+  - "同比/环比必须在 SQL 中显式计算并同时返回两期原值，便于人工复核"

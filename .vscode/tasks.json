@@ -1,0 +1,125 @@
+{
+  // 用法：Cmd+Shift+P -> "Tasks: Run Task"，或 Cmd+Shift+B 跑默认任务
+  //
+  // 任务分两组：
+  //   【W1】不需要 Docker / 数据库 —— 老机器现在就能跑
+  //   【W2+】需要数据库 —— 等 Docker 或云端 PostgreSQL（见 docs/03-no-docker.md）
+  "version": "2.0.0",
+  "options": { "cwd": "${workspaceFolder}" },
+
+  "tasks": [
+    // ---------------- W1：不需要数据库 ----------------
+    {
+      "label": "① W1 一键跑通 · install → doctor → test → eval-dry",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "install · 装最小依赖",
+        "doctor-w1 · W1 体检",
+        "test · 单元测试",
+        "eval-dry · 评测集自检"
+      ],
+      "problemMatcher": [],
+      "detail": "第一次打开项目跑这个。四步顺序执行，哪步失败就停在哪步"
+    },
+    {
+      "label": "doctor-w1 · W1 体检",
+      "type": "shell",
+      "command": "make doctor-w1",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "clear": true, "panel": "dedicated" },
+      "problemMatcher": [],
+      "detail": "不检查 Docker。出问题先跑这个（Cmd+Shift+B 直达）"
+    },
+    {
+      "label": "install · 装最小依赖",
+      "type": "shell",
+      "command": "make install",
+      "problemMatcher": [],
+      "detail": "W1 够用：anthropic + pydantic + pyyaml + sqlglot"
+    },
+    {
+      "label": "test · 单元测试",
+      "type": "shell",
+      "command": "make test",
+      "group": "test",
+      "problemMatcher": [],
+      "detail": "SQL 护栏测试。sqlglot 是纯 Python，不碰数据库"
+    },
+    {
+      "label": "eval-dry · 评测集自检",
+      "type": "shell",
+      "command": "make eval-dry",
+      "problemMatcher": [],
+      "detail": "不调 API，只检查 golden.jsonl 本身"
+    },
+    {
+      "label": "eval · 跑评测",
+      "type": "shell",
+      "command": "make eval WEEK=${input:week}",
+      "presentation": { "clear": true },
+      "problemMatcher": [],
+      "detail": "会弹窗选第几周。W1 只需要 API key，不需要数据库"
+    },
+
+    // ---------------- W2+：需要数据库 ----------------
+    {
+      "label": "② up + seed · 起库并重建数据",
+      "dependsOrder": "sequence",
+      "dependsOn": ["up · 起数据库", "seed · 重建数据"],
+      "problemMatcher": [],
+      "detail": "= make up && make seed，但两步输出分开，好定位失败。需要 Docker"
+    },
+    {
+      "label": "up · 起数据库",
+      "type": "shell",
+      "command": "make up",
+      "problemMatcher": [],
+      "detail": "需要 Docker Desktop 正在运行"
+    },
+    {
+      "label": "seed · 重建数据",
+      "type": "shell",
+      "command": "make seed",
+      "problemMatcher": [],
+      "detail": "改了 naming.yaml 之后跑。首次 up 之后不用"
+    },
+    {
+      "label": "down · 停数据库",
+      "type": "shell",
+      "command": "make down",
+      "problemMatcher": []
+    },
+    {
+      "label": "doctor · 完整体检（含数据库）",
+      "type": "shell",
+      "command": "make doctor",
+      "presentation": { "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "install-db · 加装数据库依赖",
+      "type": "shell",
+      "command": "make install-db",
+      "problemMatcher": [],
+      "detail": "W2 起"
+    },
+    {
+      "label": "logs · 看数据库日志",
+      "type": "shell",
+      "command": "make logs",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "数据库起不来时看这里"
+    }
+  ],
+
+  "inputs": [
+    {
+      "id": "week",
+      "type": "pickString",
+      "description": "跑第几周的评测？",
+      "options": ["1", "2", "3", "4", "5", "6"],
+      "default": "1"
+    }
+  ]
+}

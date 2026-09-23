@@ -1,0 +1,60 @@
+{
+  // F5 调试。断点打在 router.py / text2sql.py 里，能看清每一步的中间值。
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "评测 · 本周",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/ai/evals/run_eval.py",
+      "args": ["--week", "1"],
+      "cwd": "${workspaceFolder}/ai",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "问一句 · 当前光标处的问题",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "chemq.cli",
+      "args": ["ask", "${input:question}"],
+      "cwd": "${workspaceFolder}/ai",
+      "env": { "PYTHONPATH": "${workspaceFolder}/ai/src" },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "只看意图解析（便宜，调 prompt 时用这个）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "chemq.cli",
+      "args": ["plan", "${input:question}"],
+      "cwd": "${workspaceFolder}/ai",
+      "env": { "PYTHONPATH": "${workspaceFolder}/ai/src" },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "FastAPI 服务（W5）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["chemq.api:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}/ai",
+      "env": { "PYTHONPATH": "${workspaceFolder}/ai/src" },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "question",
+      "type": "promptString",
+      "description": "问一句中文问题",
+      "default": "8月哪个大区的回款率最低？"
+    }
+  ]
+}
