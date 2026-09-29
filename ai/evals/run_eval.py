@@ -32,6 +32,11 @@ sys.path.insert(0, str(ROOT / "ai" / "src"))
 GOLDEN = ROOT / "ai" / "evals" / "golden.jsonl"
 TOL_PCT = 0.5   # 数值容差 0.5%：浮点和四舍五入的差异不算错
 
+# 每类断言从第几周起「到期」。没到期的不计分、不算失败，只记为 pending。
+# 没有这个映射，一个满分的 W1 会显示 7 个 failure —— 而到了 W2 你就分不清
+# 「新坏的」和「本来还没做的」。可测性的一部分是：指标要能区分这两件事。
+DUE_FROM = {"refuse": 1, "sql": 2, "citation": 3}
+
 
 @dataclass
 class Score:
@@ -57,6 +62,7 @@ class Report:
     latencies: list[int] = field(default_factory=list)
     failures: list[dict] = field(default_factory=list)
     cases: dict = field(default_factory=dict)   # 逐题结果，对比两次运行时靠它找"翻转"的题
+    pending: list[dict] = field(default_factory=list)  # 本周还没到期的断言
 
     def summary(self) -> dict:
         lat = sorted(self.latencies)
@@ -70,6 +76,7 @@ class Report:
             "p95_ms": p95,
             "n_cases": self.intent.total,
             "n_failures": len(self.failures),
+            "n_pending": len(self.pending),
         }
 
 
@@ -119,7 +126,8 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool) -> None:
         exp = case.get("expected")
         if exp is not None and not rows_match(exp, exp):
             rep.failures.append({"id": case["id"], "error": "评测集自比对失败"})
-        return
+            return "x"
+        return "\u2713"
 
     from chemq.pipeline import answer  # noqa: PLC0415  这是你要实现的入口
 
@@ -132,20 +140,42 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool) -> None:
     rep.intent.add(intent_ok)
 
     at = case.get("assert_type", "sql")
-    ok = True
+    due_failed = False
+    waiting: list[str] = []
+
     if at == "refuse":
-        ok = bool(getattr(result, "refused", False))
-        rep.refusal.add(ok)
+        if week >= DUE_FROM["refuse"]:
+            r = bool(getattr(result, "refused", False))
+            rep.refusal.add(r)
+            due_failed = due_failed or not r
+        else:
+            waiting.append("refuse")
+
     if at in ("sql", "sql_and_citation"):
-        ok = rows_match(result.rows, case["expected"])
-        rep.execution.add(ok)
+        if week >= DUE_FROM["sql"]:
+            r = rows_match(result.rows, case["expected"])
+            rep.execution.add(r)
+            due_failed = due_failed or not r
+        else:
+            waiting.append("sql")
+
     if at in ("citation", "sql_and_citation"):
-        text = (result.answer or "") + json.dumps(
-            [c.model_dump() for c in result.citations], ensure_ascii=False
-        )
-        cited = bool(result.citations) and all(kw in text for kw in case.get("must_contain", []))
-        rep.citation.add(cited)
-        ok = ok and cited
+        if week >= DUE_FROM["citation"]:
+            text = (result.answer or "") + json.dumps(
+                [c.model_dump() for c in result.citations], ensure_ascii=False
+            )
+            cited = bool(result.citations) and all(
+                kw in text for kw in case.get("must_contain", [])
+            )
+            rep.citation.add(cited)
+            due_failed = due_failed or not cited
+        else:
+            waiting.append("citation")
+
+    if waiting:
+        rep.pending.append({"id": case["id"], "waiting_for": waiting,
+                            "due_week": max(DUE_FROM[w] for w in waiting)})
+    ok = not due_failed
 
     rep.cases[case["id"]] = {
         "intent_ok": intent_ok,
@@ -161,6 +191,8 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool) -> None:
             "expected_intent": case["intent"], "got_intent": getattr(result, "intent", None),
             "sql": getattr(result, "sql", None),
         })
+        return "x"
+    return "\u25e6" if waiting else "\u2713"    # ◦ = 有断言还没到期；✓ = 本周该过的都过了
 
 
 def main() -> int:
@@ -193,8 +225,7 @@ def main() -> int:
 
     for c in cases:
         try:
-            evaluate(c, args.week, rep, args.dry)
-            mark = "·"
+            mark = evaluate(c, args.week, rep, args.dry) or "·"
         except ModuleNotFoundError:
             print("chemq.pipeline 还没实现 —— 这是 W1 的第一个任务。")
             print("先跑 `python ai/evals/run_eval.py --week 1 --dry` 确认评测集本身没问题。")
@@ -217,9 +248,19 @@ def main() -> int:
         print(f"  {k:<14} {v}")
     print("=" * 52)
     if rep.failures:
-        print("\n未通过:")
+        print("\n真正未通过（本周该做到却没做到）:")
         for f in rep.failures[:10]:
             print("  -", json.dumps(f, ensure_ascii=False)[:160])
+    else:
+        print("\n本周该做到的全部通过 ✓")
+
+    if rep.pending:
+        by_week: dict[int, list[str]] = {}
+        for x in rep.pending:
+            by_week.setdefault(x["due_week"], []).append(x["id"])
+        print("\n还没到期（不计分，不是失败）:")
+        for wk in sorted(by_week):
+            print(f"  W{wk} 起: {', '.join(sorted(by_week[wk]))}")
 
     if args.json:
         from datetime import datetime, timezone  # noqa: PLC0415
@@ -237,6 +278,7 @@ def main() -> int:
             },
             "summary": s,
             "cases": rep.cases,
+            "pending": rep.pending,
             "failures": rep.failures,
         }
         args.json.write_text(

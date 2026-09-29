@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """生成合成业务数据 -> db/02_seed.sql
 
-所有业务命名来自 naming.yaml；换成曙光实际命名后重跑本脚本即可。
+所有业务命名来自 naming.yaml；换成目标客户实际命名后重跑本脚本即可。
 随机种子固定 —— 评测集的标准答案依赖数据可复现，不要改种子。
 
 用法: python db/gen_seed.py > db/02_seed.sql

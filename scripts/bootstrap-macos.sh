@@ -15,7 +15,7 @@ warn() { printf "  \033[33m!\033[0m %s\n" "$1"; }
 
 printf "\033[1mChemQ 开发环境安装\033[0m  (macOS %s / %s)\n" "$(sw_vers -productVersion)" "$ARCH"
 
-step "1/6  Xcode 命令行工具（提供 git 和 make）"
+step "1/7  Xcode 命令行工具（提供 git 和 make）"
 if xcode-select -p >/dev/null 2>&1; then
   ok "已安装：$(xcode-select -p)"
 else
@@ -24,7 +24,7 @@ else
   exit 0
 fi
 
-step "2/6  Homebrew"
+step "2/7  Homebrew"
 if command -v brew >/dev/null 2>&1; then
   ok "已安装：$(brew --version | head -1)"
 else
@@ -37,7 +37,7 @@ else
   ok "已安装"
 fi
 
-step "3/6  uv（Python 包管理器，自带 Python）"
+step "3/7  uv（Python 包管理器，自带 Python）"
 if command -v uv >/dev/null 2>&1; then
   ok "已安装：$(uv --version)"
 else
@@ -46,21 +46,29 @@ else
   ok "已安装（新终端才会自动进 PATH）"
 fi
 
-step "4/6  Docker Desktop"
+step "4/7  Docker Desktop"
 if [ -d "/Applications/Docker.app" ]; then
   ok "已安装"
 else
   brew install --cask docker && ok "已安装"
 fi
 
-step "5/6  VS Code"
+step "5/7  VS Code"
 if [ -d "/Applications/Visual Studio Code.app" ]; then
   ok "已安装"
 else
   brew install --cask visual-studio-code && ok "已安装"
 fi
 
-step "6/6  环境变量体检"
+step "6/7  .NET SDK（W5 的网关才用得上，现在装只是省事）"
+# 当前 LTS 是 .NET 10（2026-09）。项目 csproj 已对齐 net10.0。
+if command -v dotnet >/dev/null 2>&1; then
+  ok "已安装：$(dotnet --version 2>/dev/null)"
+else
+  brew install --cask dotnet-sdk && ok "已安装（新终端才会进 PATH）"
+fi
+
+step "7/7  环境变量体检"
 # 上一台机器栽在这里：某个 AI 工具往 shell 里塞了 ANTHROPIC_BASE_URL，
 # SDK 就不去官方地址了，报的错和「没配 key」毫无关系。新机器上先确认干净。
 DIRTY=0

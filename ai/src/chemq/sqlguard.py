@@ -1,4 +1,4 @@
-"""SQL 护栏 —— 智能问数最重要、也最容易被跳过的一层。
+"""schema_context—— 智能问数最重要、也最容易被跳过的一层。
 
 设计要点（面试可直接讲）：
   1. 不用正则，用 sqlglot 解析成 AST 再判断。正则挡不住 `/*x*/DROP`、`; DELETE`。
@@ -86,8 +86,5 @@ def _force_limit(stmt: exp.Expression, max_rows: int) -> str:
         except (AttributeError, ValueError):
             need_set = True
     if need_set:
-        try:
-            stmt = stmt.limit(max_rows)
-        except AttributeError:  # 极少数节点类型没有 .limit()
-            stmt.set("limit", exp.Limit(expression=exp.Literal.number(max_rows)))
+        stmt.set("limit", exp.Limit(expression=exp.Literal.number(max_rows)))
     return stmt.sql(dialect="postgres")

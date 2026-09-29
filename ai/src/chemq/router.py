@@ -12,9 +12,10 @@ TODO(W1):
 """
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
-import yaml
+yaml = importlib.import_module("yaml")
 
 from .config import settings
 from .llm import Llm, LlmResult
@@ -32,31 +33,31 @@ SYSTEM_ROLE = """你是示例化工经营分析系统的问题解析器。
 判定规则：
 - metric_query：能用指标字典里的指标 + 时间范围回答
 - knowledge_lookup：问的是制度、口径定义、规程（"综合能耗怎么算"）
-- mixed：既要数也要口径解释
+- mixed：只要除了数字之外还需要查文档，就是 mixed
 - out_of_scope：指标字典里没有的指标（成本、利润、人工），或非经营分析问题
 未指明时间时，默认取最近一个完整自然月，并在 reasoning 中说明。"""
 
 FEW_SHOT_EXAMPLES = """
 # 路由解析示例
 [示例 1]
-用户提问：1月份乙烯装置的综合能耗是多少？
-解析结果：{"intent": "metric_query", "metrics": ["综合能耗"], "reasoning": "询问特定指标的具体数值，时间明确。"}
+用户提问：1月份合成氨装置的单位产品综合能耗是多少？
+解析结果：{"intent": "metric_query", "metrics": ["单位产品综合能耗"], "reasoning": "询问特定指标的具体数值，时间明确。"}
 
 [示例 2]
-用户提问：综合能耗的计算口径是什么？包含分摊的电费吗？
-解析结果：{"intent": "knowledge_lookup", "metrics": ["综合能耗"], "reasoning": "不涉及数值查询，仅询问指标的业务定义和计算规则。"}
+用户提问：液氨单位产品综合能耗的计算口径是什么？包含分摊的电费吗？
+解析结果：{"intent": "knowledge_lookup", "metrics": ["单位产品综合能耗"], "reasoning": "不涉及数值查询，仅询问指标的业务定义和计算规则。"}
 
 [示例 3]
-用户提问：查一下上个月的一级品率，顺便告诉我一级品是怎么界定的。
-解析结果：{"intent": "mixed", "metrics": ["一级品率"], "reasoning": "既要求查询数值，又要求解释指标口径。"}
+用户提问：上个月一次合格率是多少？为什么比前一个月低？
+解析结果：{"intent": "mixed", "metrics": ["一次合格率"], "reasoning": "既要求查询数值，又要求解释变化原因。"}
 
 [示例 4] (拒答场景：超纲/无数据)
 用户提问：预测一下下个月的人工成本。
 解析结果：{"intent": "out_of_scope", "metrics": ["人工成本"], "reasoning": "人工成本不在当前指标字典中，且系统不支持预测类问题。"}
 
 [示例 5] (默认时间推断)
-用户提问：看一下原油加工量。
-解析结果：{"intent": "metric_query", "metrics": ["原油加工量"], "reasoning": "未提供时间，默认取最近一个完整自然月。"}
+用户提问：看一下开车率。
+解析结果：{"intent": "metric_query", "metrics": ["开车率"], "reasoning": "未提供时间，默认取最近一个完整自然月。"}
 """
 
 def data_range() -> str:

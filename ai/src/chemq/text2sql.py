@@ -61,6 +61,9 @@ def generate(plan: QueryPlan, llm: Llm | None = None) -> SqlCandidate:
 def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, list[dict]]:
     candidate = generate(plan)
     verdict = check(candidate.sql, settings().allowed_relations, settings().max_rows)
-    if not verdict.ok:
+    # ok=True 时 rewritten_sql 一定非 None，但这是 sqlguard 的"约定"，不是类型系统能看见的事实。
+    # 所以显式判空：既让类型检查器把 sql 收窄成 str，也防住哪天 sqlguard 改坏了约定。
+    if not verdict.ok or verdict.rewritten_sql is None:
         raise PermissionError("SQL 未通过护栏: " + "; ".join(verdict.violations))
-    return verdict.rewritten_sql, run_query(verdict.rewritten_sql, region=region)
+    sql = verdict.rewritten_sql
+    return sql, run_query(sql, region=region)
