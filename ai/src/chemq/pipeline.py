@@ -17,6 +17,7 @@ import uuid
 
 from .schemas import Answer
 from .router import plan  # 需要引入写好的 plan 函数
+from .text2sql import generate_and_run  
 
 def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
     """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。"""
@@ -39,14 +40,25 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
     }
     is_refused = query_plan.intent not in ANSWERABLE_INTENTS
     
-    # 按照 Answer 的字段完全对齐实例化
+    if is_refused:
+        return Answer(trace_id=trace_id, answer=query_plan.reasoning,
+                      intent=query_plan.intent, refused=True,
+                      cost_usd=result.usage.cost_usd)
+
+    sql, rows = None, []
+    if query_plan.intent in ("metric_query", "mixed"):
+        sql, rows = generate_and_run(query_plan, region=region)
+
     return Answer(
         trace_id=trace_id,
-        answer=query_plan.reasoning if is_refused else "",  # 填入 answer 字段
-        intent=query_plan.intent,                           # 填入 intent 字段
-        refused=is_refused,                                 # 填入 refused 字段
-        cost_usd=result.usage.cost_usd,                       # 填入 cost_usd 字段段
-    )
+        answer="",
+        intent=query_plan.intent,
+        refused=False,
+        sql=sql,
+        rows=rows,
+        numbers_from_sql=bool(rows),
+        cost_usd=result.usage.cost_usd,
+)
 
 def new_trace_id() -> str:
     return str(uuid.uuid4())

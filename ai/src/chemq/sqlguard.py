@@ -14,6 +14,13 @@ from sqlglot import exp
 
 from .schemas import GuardVerdict
 
+# sqlglot 30 把 expressions.py 拆成了 expressions/ 包。包的 __init__.py 里，
+# Select/Limit/Table 这些是 `from ... import *` 进来的（算再导出），而 Expression
+# 是用显式命名 import 进来的、且没写冗余别名 `as Expression` —— 按 PEP 484 的
+# 再导出规则，Pylance 就把它判成「私有导入」。所以 17 个 exp.X 里只有它报错。
+# 类型本身没选错：.args 定义在 Expression 上，Expr（更上层的基类）没有这个属性。
+SqlNode = exp.Expression  # pyright: ignore[reportPrivateImportUsage]
+
 READ_ONLY_ROOTS = (exp.Select, exp.Union, exp.Except, exp.Intersect)
 
 WRITE_NODES = (
@@ -76,7 +83,7 @@ def check(sql: str, allowed_relations: tuple[str, ...], max_rows: int = 500) -> 
     return GuardVerdict(ok=True, rewritten_sql=_force_limit(stmt, max_rows))
 
 
-def _force_limit(stmt: exp.Expression, max_rows: int) -> str:
+def _force_limit(stmt: SqlNode, max_rows: int) -> str:
     """无 LIMIT 则加上；LIMIT 超上限则压到上限。"""
     current = stmt.args.get("limit")
     need_set = True

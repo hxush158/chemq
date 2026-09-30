@@ -18,7 +18,8 @@ from chemq.sqlguard import check
 from chemq.text2sql import SYSTEM_ROLE, schema_context
 
 log = structlog.get_logger()
-MAX_REPAIR = 1
+#MAX_REPAIR = 1
+MAX_REPAIR = 3
 
 
 def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, list[dict], SqlCandidate]:
@@ -42,11 +43,12 @@ def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, l
         ).parsed
         verdict = check(candidate.sql, settings().allowed_relations, settings().max_rows)
 
-        if verdict.ok:
-            rows = run_query(verdict.rewritten_sql, region=region)
+        if verdict.ok and verdict.rewritten_sql is not None:
+            sql = verdict.rewritten_sql          # 收窄成 str，见 sqlguard.py 顶部的 SqlNode 注释
+            rows = run_query(sql, region=region)
             log.info("sql_ok", attempt=attempt, rows=len(rows),
                      metrics=candidate.metric_definitions_used)
-            return verdict.rewritten_sql, rows, candidate
+            return sql, rows, candidate
 
         last_violations = verdict.violations
         log.warning("sql_rejected", attempt=attempt, violations=verdict.violations)
