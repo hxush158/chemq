@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed reset psql sql \
-        install install-db install-all test eval eval-dry lint gateway clean
+        install install-db install-all test eval eval-dry agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -98,6 +98,21 @@ eval-dry:        ## 不调 API，只自检评测集
 
 eval:            ## 跑评测  用法: make eval WEEK=1
 	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --json ../eval-report.json
+
+agg:             ## 聚合多次评测  用法: make agg G=after   (读 runs/after-*.json)
+	@cd ai && uv run python evals/aggregate.py ../runs/$${G:-after}-*.json --name "$${G:-after}"
+
+agg-vs:          ## 对比两组  用法: make agg-vs A=base B=after
+	@cd ai && uv run python evals/aggregate.py ../runs/$${A:-base}-*.json --name "$${A:-base}" \
+		--vs ../runs/$${B:-after}-*.json --vs-name "$${B:-after}"
+
+runs:            ## 连跑 N 次并存档  用法: make runs G=after N=3
+	@mkdir -p runs
+	@for i in $$(seq 1 $${N:-3}); do \
+		$(MAKE) --no-print-directory eval WEEK=$${WEEK:-2} || true; \
+		cp eval-report.json runs/$${G:-after}-$$i.json; \
+	done
+	@$(MAKE) --no-print-directory agg G=$${G:-after}
 
 lint:
 	cd ai && uv run ruff check src evals solutions
