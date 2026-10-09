@@ -107,6 +107,20 @@ def check(
         if _qualified(table) not in allowed:
             violations.append(f"不允许访问 {_qualified(table)}；只能查语义层视图")
 
+    # 一条取数 SQL 至少要引用一个真实的视图。不碰任何表的 SELECT
+    # （SELECT 1、SELECT '查询被拒绝：…' AS 提示）语法合法、能执行、能返回一行，
+    # 但它不是取数结果 —— 模型把"拒答"写成字面量时就长这样（Q010 真实发生过）。
+    # 只引用 CTE、而 CTE 里也没有表的情况同理。
+    real_tables = [
+        t for t in stmt.find_all(exp.Table)
+        if not (t.name.lower() in cte_names and not t.text("db"))
+    ]
+    if not real_tables:
+        violations.append(
+            "查询没有引用任何语义层视图，不是取数结果"
+            "（常见于把拒答写成 SELECT '…' 字面量 —— 应改用 refuse_reason）"
+        )
+
     lowered = sql.lower()
     for token in SENSITIVE_TOKENS_BY_DIALECT.get(dialect, SENSITIVE_TOKENS):
         if token in lowered:

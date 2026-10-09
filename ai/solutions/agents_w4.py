@@ -32,13 +32,17 @@ CRITIC_SYSTEM = """你是数字核对员。给你一段分析结论和一份 SQL
 
 async def orchestrate(question: str, *, as_of: str, region: str | None = None) -> dict:
     from chemq.router import plan
-    from chemq.text2sql import generate_and_run
+    from chemq.text2sql import Unanswerable, generate_and_run
 
     p = plan(f"[今天是 {as_of}]\n{question}").parsed
     if p.intent in ("out_of_scope", "chitchat"):
         return {"refused": True, "reason": p.reasoning}
 
-    sql, rows, candidate = generate_and_run(p, region=region)
+    try:
+        run = generate_and_run(p, region=region, question=question, as_of=as_of)
+    except Unanswerable as e:
+        return {"refused": True, "reason": e.reason}
+    sql, rows, candidate = run.sql, run.rows, run.candidate
 
     narration = ""
     async for msg in query(

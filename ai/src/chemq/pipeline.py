@@ -17,7 +17,7 @@ import uuid
 
 from .schemas import Answer
 from .router import plan  # 需要引入写好的 plan 函数
-from .text2sql import generate_and_run  
+from .text2sql import Unanswerable, generate_and_run
 
 def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
     """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。"""
@@ -45,9 +45,31 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
                       intent=query_plan.intent, refused=True,
                       cost_usd=result.usage.cost_usd)
 
+    # 成本从 router 那一次开始累加。之前这里只记了 router（Haiku），
+    # 生成 SQL 的 Sonnet 调用一分钱都没算 —— 而那才是大头。
+    cost = result.usage.cost_usd
+
     sql, rows = None, []
     if query_plan.intent in ("metric_query", "mixed"):
-        sql, rows = generate_and_run(query_plan, region=region)
+        try:
+            run = generate_and_run(
+                query_plan, region=region,
+                question=question, as_of=as_of,   # 原话透传：「最低」「两个」这些词 QueryPlan 里没有
+            )
+        except Unanswerable as e:
+            # 拒答不是故障：它是一个合法的答案（"查不到"），要计分、要计成本。
+            # router 漏判了、text2sql 兜住了 —— 这正是两层都要能拒答的意义。
+            return Answer(
+                trace_id=trace_id,
+                answer=e.reason,
+                intent=query_plan.intent,
+                refused=True,
+                sql=e.sql or None,
+                cost_usd=cost + e.cost_usd,
+                caveats=[f"text2sql 拒答（{e.kind}）"],
+            )
+        sql, rows = run.sql, run.rows
+        cost += run.cost_usd
 
     return Answer(
         trace_id=trace_id,
@@ -57,8 +79,8 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
         sql=sql,
         rows=rows,
         numbers_from_sql=bool(rows),
-        cost_usd=result.usage.cost_usd,
-)
+        cost_usd=cost,
+    )
 
 def new_trace_id() -> str:
     return str(uuid.uuid4())

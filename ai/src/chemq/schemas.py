@@ -27,8 +27,26 @@ class QueryPlan(BaseModel):
 
 
 class SqlCandidate(BaseModel):
-    """W2 产出。"""
-    sql: str
+    """W2 产出。
+
+    refuse_reason 是 text2sql 这一层的「拒答出口」。
+
+    没有它的时候，模型判断出"用语义层答不了"，唯一能做的就是把拒绝写成一条
+    SQL 字面量：SELECT '查询被拒绝：……' AS 提示。这条 SQL 能过护栏（只读、
+    不碰表）、能执行、返回一行，于是被当成了答案，refused=False。Q010 真实发生过。
+    schema 里表达不了的东西，模型只能塞进它能表达的地方。
+    """
+    sql: str = Field(
+        default="",
+        description="只读 SQL。refuse_reason 非空时留空字符串。",
+    )
+    refuse_reason: str | None = Field(
+        default=None,
+        description=(
+            "只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所需时间段没有数据），"
+            "此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。"
+        ),
+    )
     metric_definitions_used: list[str] = Field(
         default_factory=list, description="引用了指标字典中的哪些口径条目"
     )
