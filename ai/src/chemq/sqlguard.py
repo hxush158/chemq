@@ -12,6 +12,7 @@ from __future__ import annotations
 import sqlglot
 from sqlglot import exp
 
+from .config import settings
 from .schemas import GuardVerdict
 
 # sqlglot 30 把 expressions.py 拆成了 expressions/ 包。包的 __init__.py 里，
@@ -28,10 +29,33 @@ WRITE_NODES = (
     exp.Alter, exp.Merge, exp.Command,
 )
 
-SENSITIVE_TOKENS = (
-    "pg_catalog", "information_schema", "pg_sleep", "pg_read_file",
-    "pg_ls_dir", "lo_import", "dblink", "copy ", "\\copy", "set role",
+# 敏感 token 是 AST 白名单之上的「腰带」，不是「裤子」—— 结构性攻击由 AST 拦，
+# 这里只补那些「语法完全合法、但在这个引擎上能读到不该读的东西」的函数与语句。
+# 它是按引擎走的：pg_read_file 在 Doris 上不存在，INTO OUTFILE 在 Postgres 上不存在。
+_TOKENS_COMMON = ("information_schema", "set role")
+
+_TOKENS_POSTGRES = (
+    "pg_catalog", "pg_sleep", "pg_read_file",
+    "pg_ls_dir", "lo_import", "dblink", "copy ", "\\copy",
 )
+
+# ⚠️ 这一组是按 Doris 的能力推的，W5 接真实 Doris 时必须逐条验证：
+#   into outfile / export  —— Doris 导出到 S3/HDFS/本地，是最直接的拖库通道
+#   s3( / hdfs( / local( / jdbc(  —— 表值函数，能绕过白名单直接读外部数据源
+#   __internal_schema      —— Doris 内部库
+#   sleep(                 —— MySQL 系的耗时函数，打满 FE 连接
+_TOKENS_DORIS = (
+    "into outfile", "outfile", "export ", "__internal_schema",
+    "sleep(", "s3(", "hdfs(", "local(", "jdbc(",
+)
+
+SENSITIVE_TOKENS_BY_DIALECT: dict[str, tuple[str, ...]] = {
+    "postgres": _TOKENS_COMMON + _TOKENS_POSTGRES,
+    "doris": _TOKENS_COMMON + _TOKENS_DORIS,
+}
+
+# 兼容旧引用：默认仍是 Postgres 那一套
+SENSITIVE_TOKENS = SENSITIVE_TOKENS_BY_DIALECT["postgres"]
 
 
 def _qualified(table: exp.Table) -> str:
@@ -39,12 +63,23 @@ def _qualified(table: exp.Table) -> str:
     return f"{db}.{table.name}".lower()
 
 
-def check(sql: str, allowed_relations: tuple[str, ...], max_rows: int = 500) -> GuardVerdict:
-    """返回 GuardVerdict；ok=True 时 rewritten_sql 是加过 LIMIT 的安全版本。"""
+def check(
+    sql: str,
+    allowed_relations: tuple[str, ...],
+    max_rows: int = 500,
+    dialect: str | None = None,
+) -> GuardVerdict:
+    """返回 GuardVerdict；ok=True 时 rewritten_sql 是加过 LIMIT 的安全版本。
+
+    dialect 留空则取 settings().sql_dialect —— 所以调用方不用关心引擎。
+    sqlglot 的 AST 是方言无关的（exp.Select 就是 exp.Select），
+    只有「解析」和「生成」两端需要知道方言，这正是当初不用正则的回报。
+    """
+    dialect = dialect or settings().sql_dialect
     violations: list[str] = []
 
     try:
-        statements = [s for s in sqlglot.parse(sql, read="postgres") if s is not None]
+        statements = [s for s in sqlglot.parse(sql, read=dialect) if s is not None]
     except Exception as e:  # noqa: BLE001
         return GuardVerdict(ok=False, violations=[f"SQL 解析失败: {e}"])
 
@@ -73,17 +108,17 @@ def check(sql: str, allowed_relations: tuple[str, ...], max_rows: int = 500) -> 
             violations.append(f"不允许访问 {_qualified(table)}；只能查语义层视图")
 
     lowered = sql.lower()
-    for token in SENSITIVE_TOKENS:
+    for token in SENSITIVE_TOKENS_BY_DIALECT.get(dialect, SENSITIVE_TOKENS):
         if token in lowered:
             violations.append(f"包含敏感操作: {token.strip()}")
 
     if violations:
         return GuardVerdict(ok=False, violations=sorted(set(violations)))
 
-    return GuardVerdict(ok=True, rewritten_sql=_force_limit(stmt, max_rows))
+    return GuardVerdict(ok=True, rewritten_sql=_force_limit(stmt, max_rows, dialect))
 
 
-def _force_limit(stmt: SqlNode, max_rows: int) -> str:
+def _force_limit(stmt: SqlNode, max_rows: int, dialect: str = "postgres") -> str:
     """无 LIMIT 则加上；LIMIT 超上限则压到上限。"""
     current = stmt.args.get("limit")
     need_set = True
@@ -94,4 +129,4 @@ def _force_limit(stmt: SqlNode, max_rows: int) -> str:
             need_set = True
     if need_set:
         stmt.set("limit", exp.Limit(expression=exp.Literal.number(max_rows)))
-    return stmt.sql(dialect="postgres")
+    return stmt.sql(dialect=dialect)

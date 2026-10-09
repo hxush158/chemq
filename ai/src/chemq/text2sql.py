@@ -23,7 +23,12 @@ from .router import load_metric_dictionary
 from .schemas import QueryPlan, SqlCandidate
 from .sqlguard import check
 
-SYSTEM_ROLE = """你是 PostgreSQL 16 专家，为示例化工经营分析系统生成只读 SQL。
+# SYSTEM_ROLE 里只有两处是方言相关的：引擎名，和月份的格式化函数。
+# 抽成模板 + 一张方言表，而不是维护两份 prompt —— 两份 prompt 一定会漂移。
+# W2 那四条输出契约（第 6-9 条）当初选择写进 prompt 而不是写进 evals 的
+# rows_match 归一化逻辑，回报就在这里：它们现在是可按方言替换的参数，
+# 而不是评测代码里的 if dialect == ...
+_SYSTEM_ROLE_TMPL = """你是 {ENGINE} 专家，为示例化工经营分析系统生成只读 SQL。
 
 硬性约束：
 1. 只能 SELECT，且只能查下列语义层视图，禁止查 fact_* / dim_* 明细表之外的任何对象。
@@ -32,7 +37,7 @@ SYSTEM_ROLE = """你是 PostgreSQL 16 专家，为示例化工经营分析系统
 4. 同比/环比必须同时返回两期原值。
 5. 结果列名用中文，与指标字典一致，便于人工复核。
 输出约定（结果集要能直接给人看，也要能被程序比对）：
-6. 月份/年月一律用 to_char(<日期列>, 'YYYY-MM') 输出，不要返回 date 或 timestamp。
+6. 月份/年月一律用 {MONTH_FMT} 输出，不要返回 date 或 timestamp。
 7. 问「哪个/谁…最高/最低/最多/最少」时，按该指标排序后 LIMIT 1，只返回那一行；
    问「前 N 个」才返回 N 行。不要把整张排名表甩给用户。
 8. 「最近 N 个月」以基准时间所在的月份为最后一个月，一共 N 个月
@@ -40,12 +45,58 @@ SYSTEM_ROLE = """你是 PostgreSQL 16 专家，为示例化工经营分析系统
 9. 环比/同比要返回两期的原值各一行，不要压成一行再加一个差值列。
 """
 
+DIALECT_PROFILE: dict[str, dict[str, str]] = {
+    "postgres": {
+        "ENGINE": "PostgreSQL 16",
+        "MONTH_FMT": "to_char(<日期列>, 'YYYY-MM')",
+    },
+    # ⚠️ W5 接真实 Doris 时要验证：date_format 的格式串是 MySQL 系的 %Y-%m，
+    #    to_char 在 Doris 上大概率不存在。验证前不要当成已确认的事实。
+    "doris": {
+        "ENGINE": "Apache Doris 4.0",
+        "MONTH_FMT": "date_format(<日期列>, '%Y-%m')",
+    },
+}
 
-def schema_context() -> str:
+
+def system_role(dialect: str | None = None) -> str:
+    """按方言渲染 system prompt。留空则取 settings().sql_dialect。"""
+    dialect = dialect or settings().sql_dialect
+    try:
+        return _SYSTEM_ROLE_TMPL.format(**DIALECT_PROFILE[dialect])
+    except KeyError:
+        raise ValueError(
+            f"没有 {dialect!r} 的 prompt 方言配置，可选：{sorted(DIALECT_PROFILE)}"
+        ) from None
+
+
+# 兼容旧引用（solutions/text2sql_w2.py 直接 import 了它）。
+# 注意：这是**渲染时固定成 postgres** 的常量，换方言要调 system_role()。
+SYSTEM_ROLE = system_role("postgres")
+
+
+def schema_context(dialect: str | None = None) -> str:
     """TODO(W2): 从 db 读 information_schema + COMMENT 动态生成，
-    先手写一版，跑通后再改成自动生成（生产系统必须自动生成，否则 schema 漂移）。"""
-    return (Path(__file__).resolve().parents[3] / "db" / "03_semantic_views.sql").read_text(
-        encoding="utf-8"
+    先手写一版，跑通后再改成自动生成（生产系统必须自动生成，否则 schema 漂移）。
+
+    路径解析留了 W5 的口子：db/<dialect>/03_semantic_views.sql 存在就用它，
+    否则回落到现在平铺的 db/03_semantic_views.sql。
+    W5 真把 db/ 拆成 db/postgres/ + db/doris/ 时，这个函数一行都不用改。
+    """
+    dialect = dialect or settings().sql_dialect
+    root = Path(__file__).resolve().parents[3] / "db"
+
+    per_dialect = root / dialect / "03_semantic_views.sql"
+    if per_dialect.exists():
+        return per_dialect.read_text(encoding="utf-8")
+
+    flat = root / "03_semantic_views.sql"
+    if dialect == "postgres" and flat.exists():
+        return flat.read_text(encoding="utf-8")
+
+    raise NotImplementedError(
+        f"缺少 {dialect} 的语义层定义：{per_dialect} 不存在。"
+        f"Doris 的语义层视图是 W5 交付物，见 docs/weekly/w5.md。"
     )
 
 

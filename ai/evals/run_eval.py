@@ -64,6 +64,27 @@ class Report:
     cases: dict = field(default_factory=dict)   # 逐题结果，对比两次运行时靠它找"翻转"的题
     pending: list[dict] = field(default_factory=list)  # 本周还没到期的断言
 
+    # 到期的断言种类 -> Report 上对应的 Score 字段名
+    DUE_SCORES = {"refuse": "refusal", "sql": "execution", "citation": "citation"}
+
+    @property
+    def errors(self) -> list[dict]:
+        """抛了异常的题。和「答错」是两回事：答错是模型的问题，
+        异常是跑不起来 —— 数据库没开、key 失效、方言没实现。"""
+        return [f for f in self.failures if "error" in f]
+
+    def unscored_due(self, week: int) -> list[str]:
+        """本周该计分、却一题都没计上的指标。
+
+        这是最危险的一类「假绿」：全线连不上数据库时 exec_acc 是 nan，
+        而 nan < 1.0 为 False，所有基于阈值的门禁都会悄悄放行。
+        """
+        return [
+            kind
+            for kind, attr in self.DUE_SCORES.items()
+            if week >= DUE_FROM[kind] and getattr(self, attr).total == 0
+        ]
+
     def summary(self) -> dict:
         lat = sorted(self.latencies)
         p95 = lat[int(len(lat) * 0.95)] if lat else 0
@@ -75,7 +96,8 @@ class Report:
             "cost_usd": round(self.cost_usd, 4),
             "p95_ms": p95,
             "n_cases": self.intent.total,
-            "n_failures": len(self.failures),
+            "n_failures": len(self.failures) - len(self.errors),
+            "n_errors": len(self.errors),
             "n_pending": len(self.pending),
         }
 
@@ -247,11 +269,26 @@ def main() -> int:
     for k, v in s.items():
         print(f"  {k:<14} {v}")
     print("=" * 52)
-    if rep.failures:
+    if rep.errors:
+        # 异常按类型聚合 —— 11 题挂在同一个 OperationalError 上，
+        # 和 11 题各挂在不同地方，是完全不同的两件事，一眼要能看出来。
+        import collections  # noqa: PLC0415
+        buckets: dict[str, list[str]] = collections.defaultdict(list)
+        for f in rep.errors:
+            kind = str(f["error"]).split("(", 1)[0].strip() or "UnknownError"
+            buckets[kind].append(f["id"])
+        print(f"\n⚠️  {len(rep.errors)} 题抛异常（跑不起来，不是答错）:")
+        for kind, ids in sorted(buckets.items(), key=lambda kv: -len(kv[1])):
+            print(f"  {kind} ×{len(ids)}: {', '.join(sorted(ids)[:8])}"
+                  + (" …" if len(ids) > 8 else ""))
+        print("  " + str(rep.errors[0]["error"])[:200])
+
+    real_failures = [f for f in rep.failures if "error" not in f]
+    if real_failures:
         print("\n真正未通过（本周该做到却没做到）:")
-        for f in rep.failures[:10]:
+        for f in real_failures[:10]:
             print("  -", json.dumps(f, ensure_ascii=False)[:160])
-    else:
+    elif not rep.errors:
         print("\n本周该做到的全部通过 ✓")
 
     if rep.pending:
@@ -286,7 +323,25 @@ def main() -> int:
         )
         print(f"\n报告已写入 {args.json}（label={label}）")
 
-    # CI 门禁：拒答准确率必须 100%，这条不容妥协
+    # ---- CI 门禁 ----
+    # 退出码分两档，因为这两件事的处理方式完全不同：
+    #   2 = 没跑起来（环境问题）—— 该修环境/workflow，revert 代码没用
+    #   1 = 跑起来了但分不够（代码退化）—— 该 revert 或继续改
+    #
+    # 判「跑起来了没有」必须在「分够不够」之前。nan 不会 < 1.0，
+    # 所以任何基于阈值的门禁都挡不住「全线异常」这种假绿 ——
+    # 这个洞在本项目里真实出现过两次（API key 失效 17 题、数据库没开 11 题），
+    # 两次 CI 都是绿的。
+    unscored = rep.unscored_due(args.week)
+    if unscored and not args.only:
+        names = {"refuse": "refuse_acc", "sql": "exec_acc", "citation": "citation_acc"}
+        print(
+            f"\n❌ W{args.week} 该计分的指标一题都没计上："
+            f"{', '.join(names[k] for k in unscored)} 全是 nan。"
+        )
+        print("   这不是分数低，是根本没跑成。先看上面的异常类型。")
+        return 2
+
     if rep.refusal.total and rep.refusal.rate < 1.0:
         print("\n❌ 拒答准确率 < 100%，不允许合并")
         return 1
