@@ -12,4 +12,6 @@ END $$;
 GRANT USAGE ON SCHEMA chem TO chemq_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA chem TO chemq_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA chem TO chemq_app;
+-- W3：ingest 每次「先删后插」，所以知识库两张表要额外给 DELETE（业务表仍然不给）
+GRANT DELETE ON chem.kb_document, chem.kb_chunk TO chemq_app;
 -- chemq_ro_login 的权限完全来自 chemq_ro（见 03_semantic_views.sql），此处不额外授权

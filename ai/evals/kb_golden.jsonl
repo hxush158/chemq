@@ -1,0 +1,16 @@
+{"id": "K01", "kind": "identifier", "question": "GB/T 2589 在能耗计算里是干什么用的？", "relevant": [{"doc_id": "KB-ENE-2026", "section": "第三条"}, {"doc_id": "KB-ENE-2026", "section": "第四条"}]}
+{"id": "K02", "kind": "identifier", "question": "电的折标煤系数是 0.1229 吗？", "relevant": [{"doc_id": "KB-ENE-2026", "section": "第四条"}]}
+{"id": "K03", "kind": "identifier", "question": "P05 的能耗算不算进全厂单耗？", "relevant": [{"doc_id": "KB-ENE-2026", "section": "第二条"}, {"doc_id": "KB-ENE-2026", "section": "第六条"}]}
+{"id": "K04", "kind": "identifier", "question": "P02 那次停车之后的维修登记成什么类型？", "relevant": [{"doc_id": "KB-OPS-STOP", "section": "第四条"}]}
+{"id": "K05", "kind": "fuzzy", "question": "能耗到底是怎么算出来的？", "relevant": [{"doc_id": "KB-ENE-2026", "section": "第三条"}, {"doc_id": "KB-ENE-2026", "section": "第五条"}, {"doc_id": "KB-MET-2026", "section": "单位产品综合能耗"}]}
+{"id": "K06", "kind": "fuzzy", "question": "装置大修那几天耗的能要不要算进考核？", "relevant": [{"doc_id": "KB-ENE-2026", "section": "第八条"}]}
+{"id": "K07", "kind": "fuzzy", "question": "检修算不算非计划停车？", "relevant": [{"doc_id": "KB-OPS-STOP", "section": "第三条"}, {"doc_id": "KB-OPS-STOP", "section": "第四条"}]}
+{"id": "K08", "kind": "fuzzy", "question": "为什么我们的回款率和财务报的数不一样？", "relevant": [{"doc_id": "KB-MET-2026", "section": "回款率"}]}
+{"id": "K09", "kind": "fuzzy", "question": "三月份氨厂开工不足是怎么回事？", "relevant": [{"doc_id": "KB-RPT-202603", "section": "二、生产运行"}, {"doc_id": "KB-RPT-202603", "section": "一、本月要点"}, {"doc_id": "KB-RPT-202603", "section": "五、结论"}]}
+{"id": "K10", "kind": "fuzzy", "question": "3 月份单耗为什么上去了？", "relevant": [{"doc_id": "KB-RPT-202603", "section": "三、能耗"}, {"doc_id": "KB-ENE-2026", "section": "第八条"}]}
+{"id": "K11", "kind": "fuzzy", "question": "产量包不包括返工的部分？", "relevant": [{"doc_id": "KB-MET-2026", "section": "产量"}]}
+{"id": "K12", "kind": "fuzzy", "question": "装置只是降负荷没停，算停车吗？", "relevant": [{"doc_id": "KB-OPS-STOP", "section": "第五条"}]}
+{"id": "K13", "kind": "refuse_with_source", "question": "利润怎么算？", "relevant": [{"doc_id": "KB-MET-2026", "section": "暂不支持的指标"}]}
+{"id": "K14", "kind": "no_hit", "question": "帮我写一封辞职信", "relevant": []}
+{"id": "K15", "kind": "no_hit", "question": "安全生产事故应该怎么上报？", "relevant": []}
+{"id": "K16", "kind": "no_hit", "question": "设备采购的审批流程是什么？", "relevant": []}

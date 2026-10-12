@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed reset psql sql \
-        install install-db install-all test eval eval-dry agg agg-vs runs lint gateway clean
+        install install-db install-rag install-all ingest ingest-dry test eval eval-dry agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -87,8 +87,17 @@ install:         ## 装最小依赖（W1 够用，不含数据库/Agent SDK）
 install-db:      ## 加装数据库依赖（W2 起）
 	cd ai && uv sync --extra dev --extra db
 
+install-rag:     ## 加装 RAG 依赖（W3 起：数据库 + boto3[crt]）
+	cd ai && uv sync --extra dev --extra db --extra aws
+
 install-all:     ## 全装（W4 起：Agent SDK / MCP / FastAPI / boto3）
 	cd ai && uv sync --all-extras
+
+ingest-dry:      ## 只切块看结果，不调 AWS、不写库
+	cd ai && uv run python -m chemq.ingest --dry
+
+ingest:          ## 知识文档写进库（先 aws login --profile chemq；make seed 之后要重跑）
+	cd ai && uv run python -m chemq.ingest
 
 test:            ## 跑单元测试（SQL 护栏在这里）
 	cd ai && uv run pytest -q
