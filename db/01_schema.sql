@@ -136,7 +136,9 @@ CREATE TABLE kb_chunk (
     content         text NOT NULL,
     token_count     int,
     embedding       vector(1024),             -- 见 docs/03-rag.md 选型说明
-    tsv             tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED
+    -- 不能用 GENERATED ALWAYS AS (to_tsvector('simple', content))：'simple' 不切中文，
+    -- 一整句会变成一个词项。由 ingest 用 textseg.doc_lexemes() + array_to_tsvector() 写入。
+    tsv             tsvector
 );
 CREATE INDEX kb_chunk_tsv_idx  ON kb_chunk USING gin(tsv);
 CREATE INDEX kb_chunk_vec_idx  ON kb_chunk USING hnsw (embedding vector_cosine_ops);

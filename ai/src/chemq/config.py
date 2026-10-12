@@ -69,6 +69,19 @@ class Settings(BaseSettings):
 
     # --- AWS ---
     aws_region: str = "ap-southeast-2"        # Sydney：离 Auckland 最近
+    # aws login --profile chemq 建的那个 profile。凭证是临时的（每 15 分钟自动轮换），
+    # 不存长期 access key —— 所以这里只放 profile 名，没有 key。
+    aws_profile: str = "chemq"
+
+    # --- RAG（W3）--- 设计说明见 docs/03-rag.md
+    embed_model: str = "amazon.titan-embed-text-v2:0"
+    embed_dim: int = 1024                  # 必须和 kb_chunk.embedding 的 vector(1024) 一致
+    rag_rrf_k: int = 60                    # RRF 的 k：名次的钝化程度
+    rag_candidates: int = 20               # 每一路先各取多少条，再融合
+    rag_top_k: int = 5
+    # 向量这一路的最低余弦相似度，低于它且没有标识符字面命中 → 判"无命中"。
+    # ⚠ 占位值，W3 第 5 步用评测集标定。
+    rag_min_cosine: float = 0.35
     s3_kb_bucket: str = ""
     ddb_session_table: str = "chemq-sessions"
 

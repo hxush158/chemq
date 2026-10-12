@@ -97,12 +97,27 @@ DSN = os.environ.get("CHEMQ_PG_DSN", "postgresql://postgres:chemq@localhost:5432
 PSQL = shlex.split(os.environ.get("CHEMQ_PSQL", "psql"))
 
 
+def _with_search_path(dsn: str) -> str:
+    """把 search_path 写进连接串（libpq 的 options 参数），连接一建立就生效，不产生任何输出。
+
+    为什么不用这两种看起来更简单的办法：
+      · 环境变量 PGOPTIONS：Makefile 传进来的 PSQL 是 `docker compose exec -T db psql`，
+        docker compose exec 不会把宿主机的环境变量带进容器，PGOPTIONS 在容器里不存在。
+      · 在 SQL 前面拼 `SET search_path ...;`：psql 会把 SET 的命令标签也打印出来，
+        结果每道题的标准答案里都多出一行 {"v": "SET"} —— 行数全错，exec_acc 会直接归零。
+    连接串是作为参数传给 psql 的，进不进容器都一样有效。
+    """
+    opt = "options=-csearch_path%3Dchem%2Cpublic"
+    if "options=" in dsn:
+        return dsn
+    return dsn + ("&" if "?" in dsn else "?") + opt
+
+
 def run_sql(sql: str):
     """用 psql 跑参考 SQL。刻意不引入 psycopg —— 评测集构建脚本要能在最裸的环境里跑。"""
-    env = {**os.environ, "PGOPTIONS": "-c search_path=chem,public"}
     proc = subprocess.run(
-        [*PSQL, DSN, "-tA", "-F", "\t", "-c", sql],
-        capture_output=True, text=True, env=env,
+        [*PSQL, _with_search_path(DSN), "-tA", "-F", "\t", "-c", sql],
+        capture_output=True, text=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"SQL 执行失败: {proc.stderr.strip()}\n{sql}")
@@ -114,15 +129,22 @@ def run_sql(sql: str):
 
 
 def main() -> None:
-    with OUT.open("w", encoding="utf-8") as f:
-        for c in CASES:
-            rec = dict(c)
-            rec.setdefault("assert_type", "sql")
-            sql = rec.pop("sql", None)
-            if sql:
-                rec["reference_sql"] = " ".join(sql.split())
-                rec["expected"] = run_sql(sql)
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    # 先在内存里把全部标准答案算完，再一次性替换文件。
+    # 原来是先 open("w") 再逐条跑 SQL —— 第一条 SQL 一失败，旧的评测集已经被清空了。
+    # 生成结果的脚本，失败时至少不能毁掉上一次的结果。
+    lines = []
+    for c in CASES:
+        rec = dict(c)
+        rec.setdefault("assert_type", "sql")
+        sql = rec.pop("sql", None)
+        if sql:
+            rec["reference_sql"] = " ".join(sql.split())
+            rec["expected"] = run_sql(sql)
+        lines.append(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    tmp = OUT.with_suffix(OUT.suffix + ".tmp")
+    tmp.write_text("".join(lines), encoding="utf-8")
+    os.replace(tmp, OUT)          # 同一文件系统内是原子操作：要么旧文件，要么完整的新文件
     print(f"wrote {len(CASES)} cases -> {OUT}")
 
 

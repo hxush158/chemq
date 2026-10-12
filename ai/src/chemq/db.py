@@ -28,7 +28,9 @@ class Engine(Protocol):
     dialect: str
 
     def readonly_cursor(self, region: str | None = None) -> Any: ...
-    def run_query(self, sql: str, region: str | None = None) -> list[dict[str, Any]]: ...
+    def run_query(
+        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
     def app_cursor(self) -> Any: ...
 
 
@@ -53,9 +55,13 @@ class PostgresEngine:
                     cur.execute("SELECT set_config('chemq.region', %s, false)", (region,))
                 yield cur
 
-    def run_query(self, sql: str, region: str | None = None) -> list[dict[str, Any]]:
+    def run_query(
+        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         with self.readonly_cursor(region) as cur:
-            cur.execute(sql)
+            # params 为 None 时 psycopg 不解析 % 占位符 —— 模型生成的 SQL 里可能有
+            # LIKE '%甲醇%' 或 Doris 的 date_format('%Y-%m')，千万别给它传 {}。
+            cur.execute(sql, params)
             return cur.fetchall()
 
     @contextmanager
@@ -109,7 +115,9 @@ class DorisEngine:
     def readonly_cursor(self, region: str | None = None) -> Any:
         raise NotImplementedError(self._TODO)
 
-    def run_query(self, sql: str, region: str | None = None) -> list[dict[str, Any]]:
+    def run_query(
+        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         raise NotImplementedError(self._TODO)
 
     def app_cursor(self) -> Any:
@@ -140,8 +148,11 @@ def readonly_cursor(region: str | None = None) -> Iterator[Any]:
         yield cur
 
 
-def run_query(sql: str, region: str | None = None) -> list[dict[str, Any]]:
-    return engine().run_query(sql, region=region)
+def run_query(
+    sql: str, region: str | None = None, params: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """params 只给我们自己写的固定 SQL 用（比如 RAG 检索）。模型生成的 SQL 不传参数。"""
+    return engine().run_query(sql, region=region, params=params)
 
 
 @contextmanager

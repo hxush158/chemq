@@ -125,6 +125,8 @@ END $$;
 GRANT USAGE ON SCHEMA chem TO chemq_ro;
 GRANT SELECT ON v_plant_daily, v_energy_daily, v_sales_daily, v_monthly_summary TO chemq_ro;
 GRANT SELECT ON dim_date, dim_plant, dim_product, dim_customer, dim_energy_type TO chemq_ro;
+-- W3：RAG 检索也走只读账号。漏了这一行，hybrid_search 会报 permission denied for table kb_chunk
+GRANT SELECT ON kb_document, kb_chunk TO chemq_ro;
 -- 刻意不授予 fact_* 明细表：模型只能走语义层
 REVOKE ALL ON fact_sales FROM chemq_ro;
 
