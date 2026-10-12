@@ -82,7 +82,7 @@ def embed_all(docs: Sequence[Document], embedder: Embedder, log=print) -> list[l
         for c in d.chunks:
             embs.append(embedder.embed(c.content))
             n += 1
-            log(f"  向量化 {n}/{total}  {d.doc_id} #{c.ord}", end="\r")
+            log(f"  向量化 {n}/{total}  {d.doc_id} #{c.ord}\033[K", end="\r")   # \033[K 清掉上一行残留
         out.append(embs)
     log("")
     return out

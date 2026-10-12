@@ -86,3 +86,23 @@ RRF 分数是名次，不是相关度。向量检索永远返回最近的 N 条�
 - `no_hit`（3 题）：库里没有 —— 测 `is_no_hit()`，也用来标定 `rag_min_cosine`
 
 Recall@5 只在前三类上算；`no_hit` 单独统计误答率。
+
+## 7. 入库（ingest）
+
+```
+make install-rag          # 数据库 + boto3[crt]（>=1.41 才读得了 aws login 的凭证）
+aws login --profile chemq # 临时凭证，最长 12 小时
+make ingest-dry           # 只切块看结果
+make ingest               # 切块 -> Titan 向量化 -> 写库
+```
+
+两条设计：
+
+- **先全部向量化，再一次事务写库。** 向量化是几十次网络调用，中途凭证过期或断网，
+  库里不会出现"一半新一半旧"。
+- **`kb/docs` 是唯一来源。** 每次整体同步：先删后插，文件夹里没有的文档也从库里删掉，
+  重跑结果一样。所以 `chemq_app` 对两张 kb 表多给了 DELETE（业务表不给）。
+
+`make seed` 会重建 schema、清空知识库，seed 之后要重跑 `make ingest`。
+
+首次入库：4 篇 34 块，3981 tokens，约 6 秒。
