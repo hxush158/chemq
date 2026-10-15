@@ -93,3 +93,33 @@ def test_hit1_counts_only_rank_one():
     o = rr.summarize([q("A", 1), q("B", 2), q("C", None)])["overall"]["hybrid"]
     assert o["hit1"] == pytest.approx(1 / 3, abs=1e-4)
     assert o["hit"] == pytest.approx(2 / 3, abs=1e-4)
+
+
+def _jq(id_, kind, found, sweep=None):
+    r = rr.QResult(id=id_, kind=kind, question="", best_cos=0.3)
+    r.signals = ["余弦"] if found else []
+    r.no_hit_at = sweep or {}
+    for m in rr.MODES:
+        r.modes[m] = rr.ModeResult(rank=1, found=1, n_rel=0 if kind in rr.NO_ANSWER else 1)
+    return r
+
+
+def test_judge_counts_false_refuse_false_answer_and_near_miss():
+    rs = [_jq("A", "fuzzy", True), _jq("B", "fuzzy", False),
+          _jq("C", "no_hit", False), _jq("D", "no_hit", True),
+          _jq("E", "near_miss", True)]
+    j = rr.summarize(rs)["judge"]
+    assert j == {"false_refuse": ["B"], "false_answer": ["D"], "near_miss_found": ["E"]}
+
+
+def test_near_miss_excluded_from_hit_scores():
+    s = rr.summarize([_jq("A", "fuzzy", True), _jq("E", "near_miss", True)])
+    assert s["overall"]["hybrid"]["n"] == 1
+
+
+def test_sweep_uses_per_threshold_judgment():
+    rs = [_jq("A", "fuzzy", True, {"0.20": False, "0.40": True}),
+          _jq("C", "no_hit", False, {"0.20": False, "0.40": True})]
+    sw = rr.summarize(rs)["sweep"]
+    assert sw["0.20"]["false_answer"] == ["C"] and sw["0.20"]["false_refuse"] == []
+    assert sw["0.40"]["false_refuse"] == ["A"] and sw["0.40"]["false_answer"] == []

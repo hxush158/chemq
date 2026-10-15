@@ -8,12 +8,14 @@
 TODO(W3):
   1. ingest：文档 -> 分块（制度类按条款，其余按标题层级，400~800 token，overlap 80）
             -> Titan 向量化 -> 写 kb_chunk（tsv 用 textseg.doc_lexemes）
-  2. 第 5 步：用评测集标定 rag_min_cosine
+  2. ✅ 第 5 步：用评测集标定 rag_min_cosine，加术语字面命中（kb/glossary.txt）
   3. 第 6 步：回答时用 Claude 的 search results content block 传证据，自动产出引用
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Sequence
 
 from .config import settings
@@ -141,29 +143,66 @@ def hybrid_search(
     return [Hit(**r) for r in run_query(HYBRID_SQL, params=params)]
 
 
-def is_no_hit(hits: Sequence[Hit], query: str, min_cosine: float | None = None) -> bool:
-    """"检索到了"不等于"找到了"。
+GLOSSARY_PATH = Path(__file__).resolve().parents[3] / "kb" / "glossary.txt"
+
+
+@lru_cache
+def load_glossary(path: Path = GLOSSARY_PATH) -> tuple[str, ...]:
+    """kb/glossary.txt：一行一个词，# 开头是注释。文件不存在就当空表（术语信号不起作用）。"""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return ()
+    return tuple(x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#"))
+
+
+def hit_signals(
+    hits: Sequence[Hit],
+    query: str,
+    min_cosine: float | None = None,
+    glossary: Sequence[str] | None = None,
+) -> list[str]:
+    """判定"找到了"的依据，返回成立的信号名；空列表 = 无命中。
 
     **不能看 RRF 分数**：它只反映名次。向量检索永远会返回最近的 N 条，
     哪怕问的是"帮我写辞职信"，第一名照样拿 1/(k+1)。参考实现原来就是用 RRF 分数设阈值，
     结果是无命中拒答永远不会触发。
 
-    看两个真正反映相关度的信号，任一成立就算找到了：
-      ① 向量这一路最高的余弦相似度 ≥ min_cosine
-      ② 问题里有 ASCII 标识符（GB/T、P02……），并且某条结果的正文里字面出现了它
-         —— 这是向量最弱、BM25 最强的场景，不能因为余弦低就判无命中
-    只有"BM25 命中了几个中文二元组"不算：「成本」「怎么」这种词太容易撞上。
+    看三个真正反映相关度的信号，任一成立就算找到了：
+      余弦    向量这一路最高的余弦相似度 ≥ min_cosine
+      标识符  问题里有 ASCII 标识符（GB/T、P02……），某条结果正文里字面出现了它
+              —— 向量最弱、BM25 最强的场景，不能因为余弦低就判无命中
+      术语    问题里有术语表（kb/glossary.txt）里的词，某条结果正文里也有它
+              —— 例：「利润怎么算」和"暂不支持的指标"语义不像，但字面上说的就是它
+    "BM25 命中了几个中文二元组"本身不算：「怎么」「安全」这种词太容易撞上，
+    所以中文只认术语表里的词。
     """
     if not hits:
-        return True
+        return []
     thr = settings().rag_min_cosine if min_cosine is None else min_cosine
+    terms = load_glossary() if glossary is None else glossary
+    out = []
 
     best = max((h.cos_sim for h in hits if h.cos_sim is not None), default=None)
     if best is not None and best >= thr:
-        return False
+        out.append("余弦")
 
     idents = identifiers(query)
     if idents and any(i in h.content.lower() for h in hits for i in idents):
-        return False
+        out.append("标识符")
 
-    return True
+    q_terms = [t for t in terms if t in query]
+    if q_terms and any(t in h.content for h in hits for t in q_terms):
+        out.append("术语")
+
+    return out
+
+
+def is_no_hit(
+    hits: Sequence[Hit],
+    query: str,
+    min_cosine: float | None = None,
+    glossary: Sequence[str] | None = None,
+) -> bool:
+    """"检索到了"不等于"找到了"。判定依据见 hit_signals()。"""
+    return not hit_signals(hits, query, min_cosine, glossary)

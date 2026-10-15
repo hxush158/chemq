@@ -14,3 +14,7 @@
 {"id": "K14", "kind": "no_hit", "question": "帮我写一封辞职信", "relevant": []}
 {"id": "K15", "kind": "no_hit", "question": "安全生产事故应该怎么上报？", "relevant": []}
 {"id": "K16", "kind": "no_hit", "question": "设备采购的审批流程是什么？", "relevant": []}
+{"id": "K17", "kind": "near_miss", "question": "P01 装置开车前要做哪些安全检查？", "relevant": []}
+{"id": "K18", "kind": "near_miss", "question": "能耗考核不达标的装置怎么扣奖金？", "relevant": []}
+{"id": "K19", "kind": "near_miss", "question": "2026 年 4 月的单耗为什么升高？", "relevant": []}
+{"id": "K20", "kind": "near_miss", "question": "回款率低的客户要停止发货吗？", "relevant": []}

@@ -6,7 +6,15 @@ W3 的主题是"每一环都要能单独测"。这里测的是切词、SQL 形�
 import pytest
 
 from chemq import rag
-from chemq.rag import HYBRID_SQL, Hit, hybrid_search, is_no_hit, vector_literal
+from chemq.rag import (
+    HYBRID_SQL,
+    Hit,
+    hit_signals,
+    hybrid_search,
+    is_no_hit,
+    load_glossary,
+    vector_literal,
+)
 from chemq.textseg import NO_LEXEME, doc_lexemes, identifiers, lexemes, to_tsquery_literal
 
 DOC = "单位产品综合能耗按 GB/T 2589-2020 规定的折标系数折算，分母为合格产量。"
@@ -135,9 +143,49 @@ def test_identifier_absent_is_still_no_hit():
     assert is_no_hit([_hit(0.20, "P01 P02 装置", bm=1)], "P07 装置的开车率", min_cosine=0.35)
 
 
-def test_bm25_hit_on_common_words_does_not_count():
-    """「成本」这种二元组太容易撞上，不能凭它判定找到了。"""
-    assert is_no_hit([_hit(0.22, "成本、利润一律拒答", bm=1)], "人工成本怎么算", min_cosine=0.35)
+def test_common_words_do_not_count():
+    """「怎么」「上报」这种二元组太容易撞上，不在术语表里就不能凭它判定找到了。
+    （原来这里用的是"人工成本怎么算"，但知识库明确写了"人工成本暂不支持"——
+      那道题的正确行为是引用这条说明，不是判无命中。旧测试的预期是错的。）"""
+    hits = [_hit(0.19, "装置停车后怎么上报，见第七条", bm=1)]
+    assert is_no_hit(hits, "安全事故怎么上报", min_cosine=0.30, glossary=GLOSSARY)
+
+
+# ---- 术语字面命中（kb/glossary.txt） ----
+
+GLOSSARY = ("利润", "成本", "人工成本", "回款率")
+
+
+def test_glossary_term_rescues_low_cosine():
+    """K13：「利润怎么算」和"暂不支持的指标"语义不像（余弦 0.22），但字面上说的就是它。"""
+    hits = [_hit(0.22, "成本、利润、人工成本目前没有数据源", bm=1)]
+    assert not is_no_hit(hits, "利润怎么算？", min_cosine=0.30, glossary=GLOSSARY)
+    assert hit_signals(hits, "利润怎么算？", min_cosine=0.30, glossary=GLOSSARY) == ["术语"]
+
+
+def test_glossary_term_must_appear_in_results_too():
+    hits = [_hit(0.20, "开车率按日历天数计算", bm=1)]
+    assert is_no_hit(hits, "利润怎么算", min_cosine=0.30, glossary=GLOSSARY)
+
+
+def test_signals_report_every_reason():
+    hits = [_hit(0.62, "回款率 = 回款 / 应收，P02 见附表", bm=1)]
+    assert hit_signals(hits, "P02 的回款率", min_cosine=0.30, glossary=GLOSSARY) == \
+        ["余弦", "标识符", "术语"]
+
+
+def test_load_glossary_skips_comments_and_blanks(tmp_path):
+    f = tmp_path / "g.txt"
+    f.write_text("# 注释\n\n利润\n  回款率  \n", encoding="utf-8")
+    assert load_glossary(f) == ("利润", "回款率")
+    assert load_glossary(tmp_path / "nope.txt") == ()
+
+
+def test_repo_glossary_has_no_filler_words():
+    """防手滑：术语表里混进「怎么」这种词，辞职信也会被判成找到了。"""
+    terms = load_glossary()
+    assert {"利润", "回款率", "单耗"} <= set(terms)
+    assert not {"怎么", "什么", "安全", "审批", "生产"} & set(terms)
 
 
 def test_empty_is_no_hit():
@@ -145,5 +193,5 @@ def test_empty_is_no_hit():
 
 
 def test_default_threshold_comes_from_settings():
-    assert is_no_hit([_hit(0.30)], "能耗怎么算")          # 默认 0.35
-    assert not is_no_hit([_hit(0.40)], "能耗怎么算")
+    assert is_no_hit([_hit(0.29)], "能耗怎么算")          # 默认 0.30（第 5 步标定）
+    assert not is_no_hit([_hit(0.31)], "能耗怎么算")

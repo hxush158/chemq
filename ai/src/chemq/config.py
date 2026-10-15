@@ -79,9 +79,10 @@ class Settings(BaseSettings):
     rag_rrf_k: int = 60                    # RRF 的 k：名次的钝化程度
     rag_candidates: int = 20               # 每一路先各取多少条，再融合
     rag_top_k: int = 5
-    # 向量这一路的最低余弦相似度，低于它且没有标识符字面命中 → 判"无命中"。
-    # ⚠ 占位值，W3 第 5 步用评测集标定。
-    rag_min_cosine: float = 0.35
+    # 向量这一路的最低余弦相似度。低于它、且没有标识符/术语字面命中 → 判"无命中"。
+    # W3 第 5 步标定（Titan V2，34 块）：有答案题最低 0.408（K13 靠术语信号，不算），
+    # 无答案题最高 0.192，取两者中间。换 embedding 模型或知识库大变后要重新跑 make eval-rag 标定。
+    rag_min_cosine: float = 0.30
     s3_kb_bucket: str = ""
     ddb_session_table: str = "chemq-sessions"
 

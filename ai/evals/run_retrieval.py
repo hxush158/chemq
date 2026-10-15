@@ -11,11 +11,14 @@
   Hit@5     前 5 条里至少有一条是标注的正确章节。生成答案只需要一条对的依据，所以这个最重要。
   Recall@5  标注的几个正确章节，前 5 条里找到了几个（每题算比例，再取平均）。
 
-无答案题（no_hit）不算分，只记"全库最相似的那一块"的余弦相似度。
-有答案题也记同一个数 —— 第 5 步要看这两组数之间有没有空隙，来定 rag_min_cosine。
+无命中判断（rag.is_no_hit，按混合检索的前 5 条判）：
+  误拒      有答案，却判成"没有"
+  误答      无答案题（no_hit：辞职信这类完全无关的），却判成"有"     ← 必须为 0
+  擦边题    near_miss：话题沾边、库里其实没答案。检索层本来就分不清"相关"和"有答案"，
+            只记录不计分，留给第 6 步由大模型对照原文判断
+  另外扫一遍阈值，列出每个阈值下的误拒/误答/擦边判有 —— rag_min_cosine 按数据定，不靠猜。
 
-退出码：0 跑完；2 没跑成（数据库没起、知识库是空的、拿不到 AWS 凭证）。
-本步不设通过线：没有基线之前定线等于瞎猜。
+退出码：0 通过；1 无答案题有误答；2 没跑成（数据库没起、知识库是空的、拿不到 AWS 凭证）。
 """
 from __future__ import annotations
 
@@ -36,6 +39,8 @@ CACHE = ROOT / "runs" / "kb_query_emb.json"
 MODES = ("vector", "bm25", "hybrid")
 MODE_LABEL = {"vector": "向量", "bm25": "BM25", "hybrid": "混合"}
 K = 5
+NO_ANSWER = ("no_hit", "near_miss")             # 没有标准答案的两类，不算 Hit/Recall
+THRESHOLDS = (0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45)
 
 
 # ---------------- 判对 ----------------
@@ -117,6 +122,12 @@ class QResult:
     question: str
     best_cos: float | None                       # 全库最相似那一块的余弦（向量这一路第 1 名）
     modes: dict[str, ModeResult] = field(default_factory=dict)
+    signals: list[str] = field(default_factory=list)          # 当前阈值下"找到了"的依据；空 = 判无命中
+    no_hit_at: dict[str, bool] = field(default_factory=dict)  # 阈值 -> 是否判无命中（扫描用）
+
+    @property
+    def judged_found(self) -> bool:
+        return bool(self.signals)
 
 
 def _cell(m: ModeResult) -> str:
@@ -125,8 +136,17 @@ def _cell(m: ModeResult) -> str:
     return f"{m.rank}" if m.n_rel == 1 else f"{m.rank}({m.found}/{m.n_rel})"
 
 
+def judge(results: list[QResult], no_hit_of: Callable[[QResult], bool]) -> dict[str, list[str]]:
+    """按给定的"是否判无命中"函数，数出误拒 / 误答 / 擦边题判有。"""
+    return {
+        "false_refuse": [r.id for r in results if r.kind not in NO_ANSWER and no_hit_of(r)],
+        "false_answer": [r.id for r in results if r.kind == "no_hit" and not no_hit_of(r)],
+        "near_miss_found": [r.id for r in results if r.kind == "near_miss" and not no_hit_of(r)],
+    }
+
+
 def summarize(results: list[QResult]) -> dict[str, Any]:
-    scored = [r for r in results if r.kind != "no_hit"]
+    scored = [r for r in results if r.kind not in NO_ANSWER]
     kinds = sorted({r.kind for r in scored})
 
     def agg(rs: list[QResult], mode: str) -> dict[str, float]:
@@ -145,6 +165,11 @@ def summarize(results: list[QResult]) -> dict[str, Any]:
         "cos_answerable": sorted(r.best_cos for r in scored if r.best_cos is not None),
         "cos_no_hit": sorted(r.best_cos for r in results
                              if r.kind == "no_hit" and r.best_cos is not None),
+        "cos_near_miss": sorted(r.best_cos for r in results
+                                if r.kind == "near_miss" and r.best_cos is not None),
+        "judge": judge(results, lambda r: not r.judged_found),
+        "sweep": {t: judge(results, lambda r, t=t: r.no_hit_at.get(t, True))
+                  for t in sorted({t for r in results for t in r.no_hit_at})},
     }
 
 
@@ -161,19 +186,26 @@ def _r(s: str, w: int) -> str:
     return " " * max(0, w - _w(s)) + s
 
 
+def _verdict(r: QResult) -> str:
+    v = ("有·" + "+".join(r.signals)) if r.signals else "无"
+    wrong = (r.kind == "no_hit" and r.judged_found) or (r.kind not in NO_ANSWER and not r.judged_found)
+    return v + (" ✗" if wrong else "")
+
+
 def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
     W0, W1, WC = 6, 20, 10
     LW = 32                                       # 汇总区左边标签列宽
     print(_l("题目", W0) + _l("类型", W1) + "".join(_r(MODE_LABEL[m], WC) for m in MODES)
-          + _r("最高相似度", 14))
+          + _r("最高相似度", 14) + "   判定")
     for r in results:
-        if r.kind == "no_hit":
+        if r.kind in NO_ANSWER:
             cells = _r("（无答案，不计分）", WC * len(MODES))
         else:
             cells = "".join(_r(_cell(r.modes[m]), WC) for m in MODES)
         cos = f"{r.best_cos:.3f}" if r.best_cos is not None else "-"
-        print(_l(r.id, W0) + _l(r.kind, W1) + cells + _r(cos, 14))
+        print(_l(r.id, W0) + _l(r.kind, W1) + cells + _r(cos, 14) + "   " + _verdict(r))
     print("\n名次 = 第一条正确结果排第几；— = 前 5 条都不对；(x/y) = 标注了 y 个正确章节、找到 x 个")
+    print("判定 = 当前阈值下 is_no_hit 的结论及依据；✗ = 判错")
 
     o = summary["overall"]
     print("\n" + _l("", LW) + "".join(_r(MODE_LABEL[m], WC) for m in MODES))
@@ -185,13 +217,34 @@ def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
         print(_l(label, LW) + "".join(_r(f"{row[m]['hit1']:.2f}", WC) for m in MODES))
 
     ca, cn = summary["cos_answerable"], summary["cos_no_hit"]
-    print("\n最高相似度（第 5 步定 rag_min_cosine 用）")
+    print("\n最高相似度")
     print("  有答案题：", " ".join(f"{x:.3f}" for x in ca))
     print("  无答案题：", " ".join(f"{x:.3f}" for x in cn))
+    print("  擦边题：  ", " ".join(f"{x:.3f}" for x in summary["cos_near_miss"]))
     if ca and cn:
         gap = min(ca) - max(cn)
-        word = "有空隙" if gap > 0 else "有重叠 —— 单靠余弦分不开，第 5 步要看标识符等别的信号"
+        word = "有空隙" if gap > 0 else "有重叠 —— 单靠余弦分不开，要靠标识符/术语信号"
         print(f"  有答案最低 {min(ca):.3f}，无答案最高 {max(cn):.3f}，差 {gap:+.3f}：{word}")
+
+    j = summary["judge"]
+    n_ans = len([r for r in results if r.kind not in NO_ANSWER])
+    n_no = len([r for r in results if r.kind == "no_hit"])
+    n_near = len([r for r in results if r.kind == "near_miss"])
+    thr = summary.get("threshold")
+    print(f"\n无命中判断（当前阈值 {thr:.2f}）" if thr is not None else "\n无命中判断")
+    print(f"  误拒        {len(j['false_refuse'])}/{n_ans}  {' '.join(j['false_refuse'])}")
+    print(f"  误答        {len(j['false_answer'])}/{n_no}  {' '.join(j['false_answer'])}"
+          + ("" if not j["false_answer"] else "   ← 必须为 0"))
+    print(f"  擦边题判有  {len(j['near_miss_found'])}/{n_near}  {' '.join(j['near_miss_found'])}"
+          "   （不计分，留给第 6 步）")
+
+    if summary["sweep"]:
+        print("\n阈值扫描（三个信号一起用，只变余弦阈值）")
+        print("  " + _r("阈值", 6) + _r("误拒", 8) + _r("误答", 8) + _r("擦边判有", 12))
+        for t, row in summary["sweep"].items():
+            mark = "   ← 当前" if thr is not None and f"{thr:.2f}" == t else ""
+            print("  " + _r(t, 6) + _r(str(len(row["false_refuse"])), 8)
+                  + _r(str(len(row["false_answer"])), 8) + _r(str(len(row["near_miss_found"])), 12) + mark)
 
     # 混合不应比两路中较好的那一路差
     best_single = max(o["vector"]["hit"], o["bm25"]["hit"])
@@ -202,7 +255,8 @@ def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
 def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
     from chemq.db import run_query  # noqa: PLC0415
     from chemq.embed import TitanEmbedder  # noqa: PLC0415
-    from chemq.rag import hybrid_search  # noqa: PLC0415
+    from chemq.config import settings  # noqa: PLC0415
+    from chemq.rag import hit_signals, hybrid_search, is_no_hit  # noqa: PLC0415
 
     golden = [json.loads(x) for x in KB_GOLDEN.read_text(encoding="utf-8").splitlines() if x.strip()]
 
@@ -223,8 +277,14 @@ def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
             r.modes[mode] = score(hits, g["relevant"])
             if mode == "vector" and hits:
                 r.best_cos = hits[0].cos_sim
+            if mode == "hybrid":                           # 线上用的就是混合，按它判无命中
+                r.signals = hit_signals(hits, g["question"])
+                r.no_hit_at = {f"{t:.2f}": is_no_hit(hits, g["question"], min_cosine=t)
+                               for t in THRESHOLDS}
         results.append(r)
-    return results, summarize(results)
+    summary = summarize(results)
+    summary["threshold"] = settings().rag_min_cosine
+    return results, summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -255,6 +315,9 @@ def main(argv: list[str] | None = None) -> int:
         }
         args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n✓ 明细写到 {args.json}")
+    if summary["judge"]["false_answer"]:
+        print("\n✗ 无答案题被判成有答案：系统会拿不相关的资料硬答。退出码 1", file=sys.stderr)
+        return 1
     return 0
 
 
