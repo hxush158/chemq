@@ -81,3 +81,15 @@ def test_summarize_excludes_no_hit_from_scores():
     s = rr.summarize([q("A", "fuzzy", True, 0.6), q("B", "fuzzy", False, 0.5), q("C", "no_hit", False, 0.2)])
     assert s["overall"]["hybrid"]["hit"] == 0.5 and s["overall"]["hybrid"]["n"] == 2
     assert s["cos_answerable"] == [0.5, 0.6] and s["cos_no_hit"] == [0.2]
+
+
+def test_hit1_counts_only_rank_one():
+    def q(id_, rank):
+        r = rr.QResult(id=id_, kind="fuzzy", question="", best_cos=0.5)
+        for m in rr.MODES:
+            r.modes[m] = rr.ModeResult(rank=rank, found=int(rank is not None), n_rel=1)
+        return r
+
+    o = rr.summarize([q("A", 1), q("B", 2), q("C", None)])["overall"]["hybrid"]
+    assert o["hit1"] == pytest.approx(1 / 3, abs=1e-4)
+    assert o["hit"] == pytest.approx(2 / 3, abs=1e-4)
