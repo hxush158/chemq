@@ -79,6 +79,8 @@ class LlmResult:
     text: str = ""
     parsed: Any = None
     usage: Usage = field(default_factory=Usage)
+    # 原始内容块。带引用的回答（W3）要从这里读每个 text 块的 citations，光有 text 拿不到出处。
+    content: list[Any] = field(default_factory=list)
 
 
 # 最小可缓存长度 —— 按模型不同，差 8 倍。
@@ -196,10 +198,15 @@ class Llm:
         *,
         model: str,
         system: list[dict] | str,
-        user: str,
+        user: str | list[dict],
         max_tokens: int | None = None,
         thinking_budget: int | None = None,
     ) -> LlmResult:
+        """自由文本。user 可以是字符串，也可以是内容块列表（W3：search_result 块 + 问题）。
+
+        ⚠ 要引用（citations）就只能走这里，不能走 parse()：
+        structured outputs 和 citations 同时开会直接 400。
+        """
         kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens or self._s.max_output_tokens,
@@ -217,6 +224,7 @@ class Llm:
         return LlmResult(
             text="".join(b.text for b in resp.content if b.type == "text"),
             usage=self._usage(model, resp, t0),
+            content=list(resp.content),
         )
 
     # ---------- 结构化输出 ----------

@@ -3,7 +3,7 @@
 W1 只要能返回 intent 就算过；之后每周往里加一层：
     W1  router.plan()                    -> intent
     W2  text2sql.generate_and_run()      -> sql / rows
-    W3  rag.hybrid_search()              -> citations
+    W3  kb_answer.answer_from_kb()       -> answer + citations（✅）
     W4  agents.orchestrate()             -> 替换掉这里的手写流程
     W6  audit.write()                    -> 全链路留痕
 
@@ -18,6 +18,7 @@ import uuid
 from .schemas import Answer
 from .router import plan  # 需要引入写好的 plan 函数
 from .text2sql import Unanswerable, generate_and_run
+from .kb_answer import answer_from_kb
 
 def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
     """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。"""
@@ -70,6 +71,37 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
             )
         sql, rows = run.sql, run.rows
         cost += run.cost_usd
+
+    # W3：知识类、混合类走知识库。混合类把 SQL 结果一起交给 Claude，数字只许照抄。
+    if query_plan.intent in ("knowledge_lookup", "mixed"):
+        kb = answer_from_kb(question, sql_rows=rows if query_plan.intent == "mixed" else None)
+        cost += kb.cost_usd
+
+        if query_plan.intent == "knowledge_lookup":
+            return Answer(
+                trace_id=trace_id,
+                answer=kb.answer,
+                intent=query_plan.intent,
+                refused=kb.refused,
+                citations=kb.citations,
+                numbers_from_sql=False,
+                cost_usd=cost,
+                caveats=[f"知识库拒答（{kb.kind}）"] if kb.refused else [],
+            )
+
+        # mixed：数字已经有了，知识库答不上只是少了解释，不算整体拒答
+        return Answer(
+            trace_id=trace_id,
+            answer="" if kb.refused else kb.answer,
+            intent=query_plan.intent,
+            refused=False,
+            sql=sql,
+            rows=rows,
+            citations=kb.citations if not kb.refused else [],
+            numbers_from_sql=bool(rows),
+            cost_usd=cost,
+            caveats=[f"数字已查到，但知识库没有给出解释（{kb.kind}）：{kb.answer}"] if kb.refused else [],
+        )
 
     return Answer(
         trace_id=trace_id,

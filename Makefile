@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed reset psql sql \
-        install install-db install-rag install-all ingest ingest-dry test eval eval-dry eval-rag agg agg-vs runs lint gateway clean
+        install install-db install-rag install-all ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -111,6 +111,17 @@ eval:            ## 跑评测  用法: make eval WEEK=1
 eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@5、Recall@5（需先 make ingest）
 	@mkdir -p runs
 	cd ai && uv run python evals/run_retrieval.py --json ../runs/retrieval.json
+
+eval-kb:         ## 知识库问答评测：检索 + Claude 回答 + 引用（需 API key；用法 make eval-kb ONLY=K13,K19）
+	@mkdir -p runs
+	cd ai && uv run python evals/run_kb_answer.py --json ../runs/kb-latest.json $${ONLY:+--only $$ONLY}
+
+runs-kb:         ## 知识库问答连跑 N 次  用法: make runs-kb N=3
+	@mkdir -p runs
+	@for i in $$(seq 1 $${N:-3}); do \
+		echo "=== 第 $$i 次 ==="; \
+		(cd ai && uv run python evals/run_kb_answer.py --json ../runs/kb-$$i.json | tail -7) || true; \
+	done
 
 agg:             ## 聚合多次评测  用法: make agg G=after   (读 runs/after-*.json)
 	@cd ai && uv run python evals/aggregate.py ../runs/$${G:-after}-*.json --name "$${G:-after}"
