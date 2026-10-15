@@ -29,6 +29,9 @@ from .textseg import identifiers, to_tsquery_literal
 #     窗口函数版本会全表扫描、全表排序
 #
 # 向量这一路额外带出原始余弦距离 —— RRF 分数是名次，判断"无命中"必须看它。
+#
+# 两路的条数分开传（n_vec / n_bm）：评测时把某一路设成 0，就得到"只用向量"/"只用 BM25"，
+# 三种方式跑的是同一段 SQL，比较才公平。
 HYBRID_SQL = """
 WITH vec AS (
   SELECT chunk_id, d, row_number() OVER (ORDER BY d) AS r
@@ -37,7 +40,7 @@ WITH vec AS (
     FROM chem.kb_chunk
     WHERE embedding IS NOT NULL
     ORDER BY embedding <=> %(emb)s::vector
-    LIMIT %(n)s
+    LIMIT %(n_vec)s
   ) t
 ),
 bm AS (
@@ -47,7 +50,7 @@ bm AS (
     FROM chem.kb_chunk
     WHERE tsv @@ %(tsq)s::tsquery
     ORDER BY s DESC
-    LIMIT %(n)s
+    LIMIT %(n_bm)s
   ) t
 ),
 fused AS (
@@ -68,6 +71,14 @@ LEFT JOIN bm  b ON b.chunk_id = f.chunk_id
 ORDER BY f.rrf DESC
 LIMIT %(top_k)s
 """
+
+
+# mode -> (用向量这一路, 用 BM25 这一路)
+MODES: dict[str, tuple[bool, bool]] = {
+    "hybrid": (True, True),
+    "vector": (True, False),
+    "bm25": (False, True),
+}
 
 
 @dataclass
@@ -105,18 +116,26 @@ def hybrid_search(
     *,
     rrf_k: int | None = None,
     candidates: int | None = None,
+    mode: str = "hybrid",
 ) -> list[Hit]:
     """向量 + BM25 各取前 N，用 RRF 融合后返回前 top_k。
 
     单用向量会漏掉 "GB/T 2589" 这种标识符，单用 BM25 会漏掉 "能耗怎么算" 这种问法。
     **它只负责找，不负责判断找得对不对** —— 那是 is_no_hit() 的事。
+
+    mode：hybrid（默认）/ vector / bm25。后两个只给评测用，线上永远是 hybrid。
     """
+    if mode not in MODES:
+        raise ValueError(f"mode 只能是 {sorted(MODES)}，收到 {mode!r}")
+    use_vec, use_bm = MODES[mode]
     s = settings()
+    n = s.rag_candidates if candidates is None else candidates
     params = {
         "emb": vector_literal(query_embedding),
         "tsq": to_tsquery_literal(query),
         "rrf_k": s.rag_rrf_k if rrf_k is None else rrf_k,
-        "n": s.rag_candidates if candidates is None else candidates,
+        "n_vec": n if use_vec else 0,
+        "n_bm": n if use_bm else 0,
         "top_k": s.rag_top_k if top_k is None else top_k,
     }
     return [Hit(**r) for r in run_query(HYBRID_SQL, params=params)]

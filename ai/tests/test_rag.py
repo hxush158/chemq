@@ -58,7 +58,7 @@ def test_each_leg_orders_and_limits_before_fusing():
     """原来的写法 `row_number() OVER (...) ... LIMIT 20` 不保证取到前 20 名，也用不上 HNSW。"""
     vec_leg = HYBRID_SQL.split("bm AS")[0]
     assert "ORDER BY embedding <=> %(emb)s::vector" in vec_leg
-    assert vec_leg.index("ORDER BY embedding") < vec_leg.index("LIMIT %(n)s")
+    assert vec_leg.index("ORDER BY embedding") < vec_leg.index("LIMIT %(n_vec)s")
 
 
 def test_bm25_uses_literal_tsquery_not_parser():
@@ -89,8 +89,24 @@ def test_hybrid_search_passes_params(monkeypatch):
     assert seen["tsq"] == "'2589' | 'gb' | 'gb/t'"
     assert seen["emb"].startswith("[0,0,")
     assert seen["top_k"] == 3
-    assert seen["rrf_k"] == 60 and seen["n"] == 20
+    assert seen["rrf_k"] == 60 and seen["n_vec"] == 20 and seen["n_bm"] == 20
     assert isinstance(hits[0], Hit) and hits[0].to_citation().doc_id == "D1"
+
+
+@pytest.mark.parametrize("mode, n_vec, n_bm", [
+    ("hybrid", 20, 20), ("vector", 20, 0), ("bm25", 0, 20),
+])
+def test_mode_switches_off_one_leg(monkeypatch, mode, n_vec, n_bm):
+    """评测用：关掉一路 = 那一路 LIMIT 0，三种方式跑同一段 SQL。"""
+    seen = {}
+    monkeypatch.setattr(rag, "run_query", lambda sql, region=None, params=None: seen.update(params) or [])
+    hybrid_search("能耗怎么算", [0.0] * 1024, mode=mode)
+    assert (seen["n_vec"], seen["n_bm"]) == (n_vec, n_bm)
+
+
+def test_unknown_mode_is_rejected():
+    with pytest.raises(ValueError, match="mode"):
+        hybrid_search("x", [0.0] * 1024, mode="dense")
 
 
 # ================= ③ 无命中判断 =================

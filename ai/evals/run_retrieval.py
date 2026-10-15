@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""检索评测 —— 只评"找没找对"，不调大模型。
+
+    make eval-rag
+
+同一批题用三种方式各查一次：只用向量 / 只用 BM25 / 混合（线上用的）。
+检索里没有大模型，同样的输入每次结果都一样 —— 跑一次就够，不用像 W2 那样连跑 3 次看噪声。
+
+指标（只在有标准答案的题上算，即 kind != no_hit）：
+  Hit@5     前 5 条里至少有一条是标注的正确章节。生成答案只需要一条对的依据，所以这个最重要。
+  Recall@5  标注的几个正确章节，前 5 条里找到了几个（每题算比例，再取平均）。
+
+无答案题（no_hit）不算分，只记"全库最相似的那一块"的余弦相似度。
+有答案题也记同一个数 —— 第 5 步要看这两组数之间有没有空隙，来定 rag_min_cosine。
+
+退出码：0 跑完；2 没跑成（数据库没起、知识库是空的、拿不到 AWS 凭证）。
+本步不设通过线：没有基线之前定线等于瞎猜。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import unicodedata
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Sequence
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "ai" / "src"))
+
+KB_GOLDEN = ROOT / "ai" / "evals" / "kb_golden.jsonl"
+CACHE = ROOT / "runs" / "kb_query_emb.json"
+MODES = ("vector", "bm25", "hybrid")
+MODE_LABEL = {"vector": "向量", "bm25": "BM25", "hybrid": "混合"}
+K = 5
+
+
+# ---------------- 判对 ----------------
+
+def heading_of(content: str) -> str:
+    """chunk 正文第一行是「《标题》 › 章 › 条」，取标题之后那段。"""
+    first = content.split("\n", 1)[0]
+    return first.split(" › ", 1)[1] if " › " in first else ""
+
+
+def matches(doc_id: str, content: str, rel: dict[str, str]) -> bool:
+    """标注的 section 要和 chunk 路径的**最后一段**对上：
+    完全相等（"回款率"），或以它加空格开头（"第三条" 对 "第三条 综合能耗的计算依据"）。
+    不用"包含"：那样"第一条"会误中"第十一条"之类。"""
+    if doc_id != rel["doc_id"]:
+        return False
+    last = heading_of(content).split(" › ")[-1]
+    return last == rel["section"] or last.startswith(rel["section"] + " ")
+
+
+@dataclass
+class ModeResult:
+    rank: int | None              # 第一条正确结果排第几（1 起），前 K 条都没有为 None
+    found: int                    # 标注的正确章节里找到了几个
+    n_rel: int
+    top: list[str] = field(default_factory=list)   # 前 K 条是什么，方便看错在哪
+
+    @property
+    def hit(self) -> bool:
+        return self.rank is not None
+
+    @property
+    def recall(self) -> float:
+        return self.found / self.n_rel if self.n_rel else float("nan")
+
+
+def score(hits: Sequence[Any], relevant: list[dict[str, str]]) -> ModeResult:
+    rank = None
+    found = set()
+    for i, h in enumerate(hits, 1):
+        for j, rel in enumerate(relevant):
+            if matches(h.doc_id, h.content, rel):
+                found.add(j)
+                rank = rank or i
+    top = [f"{h.doc_id} {heading_of(h.content)}" for h in hits]
+    return ModeResult(rank=rank, found=len(found), n_rel=len(relevant), top=top)
+
+
+# ---------------- 问题向量（带缓存） ----------------
+
+def load_embeddings(questions: list[str], model: str, embed: Callable[[str], list[float]],
+                    cache: Path = CACHE) -> dict[str, list[float]]:
+    """缓存键是 模型|问题。换模型或改了题目会自动重新算，其余直接读缓存、不调 AWS。"""
+    try:
+        data = json.loads(cache.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+    out, dirty = {}, False
+    for q in questions:
+        key = f"{model}|{q}"
+        if key not in data:
+            data[key] = embed(q)
+            dirty = True
+        out[q] = data[key]
+    if dirty:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, cache)
+    return out
+
+
+# ---------------- 主流程 ----------------
+
+@dataclass
+class QResult:
+    id: str
+    kind: str
+    question: str
+    best_cos: float | None                       # 全库最相似那一块的余弦（向量这一路第 1 名）
+    modes: dict[str, ModeResult] = field(default_factory=dict)
+
+
+def _cell(m: ModeResult) -> str:
+    if not m.hit:
+        return "—"
+    return f"{m.rank}" if m.n_rel == 1 else f"{m.rank}({m.found}/{m.n_rel})"
+
+
+def summarize(results: list[QResult]) -> dict[str, Any]:
+    scored = [r for r in results if r.kind != "no_hit"]
+    kinds = sorted({r.kind for r in scored})
+
+    def agg(rs: list[QResult], mode: str) -> dict[str, float]:
+        if not rs:
+            return {"hit": float("nan"), "recall": float("nan"), "n": 0}
+        return {
+            "hit": round(sum(r.modes[mode].hit for r in rs) / len(rs), 4),
+            "recall": round(sum(r.modes[mode].recall for r in rs) / len(rs), 4),
+            "n": len(rs),
+        }
+
+    return {
+        "overall": {m: agg(scored, m) for m in MODES},
+        "by_kind": {k: {m: agg([r for r in scored if r.kind == k], m) for m in MODES} for k in kinds},
+        "cos_answerable": sorted(r.best_cos for r in scored if r.best_cos is not None),
+        "cos_no_hit": sorted(r.best_cos for r in results
+                             if r.kind == "no_hit" and r.best_cos is not None),
+    }
+
+
+def _w(s: str) -> int:
+    """终端里中文占两格，用 len() 对齐会歪。"""
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in s)
+
+
+def _l(s: str, w: int) -> str:
+    return s + " " * max(0, w - _w(s))
+
+
+def _r(s: str, w: int) -> str:
+    return " " * max(0, w - _w(s)) + s
+
+
+def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
+    W0, W1, WC = 6, 20, 10
+    LW = 32                                       # 汇总区左边标签列宽
+    print(_l("题目", W0) + _l("类型", W1) + "".join(_r(MODE_LABEL[m], WC) for m in MODES)
+          + _r("最高相似度", 14))
+    for r in results:
+        if r.kind == "no_hit":
+            cells = _r("（无答案，不计分）", WC * len(MODES))
+        else:
+            cells = "".join(_r(_cell(r.modes[m]), WC) for m in MODES)
+        cos = f"{r.best_cos:.3f}" if r.best_cos is not None else "-"
+        print(_l(r.id, W0) + _l(r.kind, W1) + cells + _r(cos, 14))
+    print("\n名次 = 第一条正确结果排第几；— = 前 5 条都不对；(x/y) = 标注了 y 个正确章节、找到 x 个")
+
+    o = summary["overall"]
+    print("\n" + _l("", LW) + "".join(_r(MODE_LABEL[m], WC) for m in MODES))
+    print(_l(f"Hit@5（{o['hybrid']['n']} 题）", LW) + "".join(_r(f"{o[m]['hit']:.2f}", WC) for m in MODES))
+    print(_l("Recall@5", LW) + "".join(_r(f"{o[m]['recall']:.2f}", WC) for m in MODES))
+    for k, row in summary["by_kind"].items():
+        label = f"  Hit@5 {k}（{row['hybrid']['n']}）"
+        print(_l(label, LW) + "".join(_r(f"{row[m]['hit']:.2f}", WC) for m in MODES))
+
+    ca, cn = summary["cos_answerable"], summary["cos_no_hit"]
+    print("\n最高相似度（第 5 步定 rag_min_cosine 用）")
+    print("  有答案题：", " ".join(f"{x:.3f}" for x in ca))
+    print("  无答案题：", " ".join(f"{x:.3f}" for x in cn))
+    if ca and cn:
+        gap = min(ca) - max(cn)
+        word = "有空隙" if gap > 0 else "有重叠 —— 单靠余弦分不开，第 5 步要看标识符等别的信号"
+        print(f"  有答案最低 {min(ca):.3f}，无答案最高 {max(cn):.3f}，差 {gap:+.3f}：{word}")
+
+    # 混合不应比两路中较好的那一路差
+    best_single = max(o["vector"]["hit"], o["bm25"]["hit"])
+    if o["hybrid"]["hit"] < best_single:
+        print(f"\n! 混合 Hit@5 {o['hybrid']['hit']:.2f} 低于单路最好的 {best_single:.2f}：RRF 融合有问题，先查这个")
+
+
+def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
+    from chemq.db import run_query  # noqa: PLC0415
+    from chemq.embed import TitanEmbedder  # noqa: PLC0415
+    from chemq.rag import hybrid_search  # noqa: PLC0415
+
+    golden = [json.loads(x) for x in KB_GOLDEN.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+    n_chunks = run_query("SELECT count(*) AS n FROM chem.kb_chunk")[0]["n"]
+    if not n_chunks:
+        raise RuntimeError("知识库是空的。先跑 make ingest（make seed 之后都要重跑）")
+
+    embedder = TitanEmbedder()
+    embs = load_embeddings([g["question"] for g in golden], embedder.model,
+                           lambda q: embedder.embed(q).vector)
+
+    results = []
+    for g in golden:
+        emb = embs[g["question"]]
+        r = QResult(id=g["id"], kind=g["kind"], question=g["question"], best_cos=None)
+        for mode in MODES:
+            hits = hybrid_search(g["question"], emb, top_k=k, mode=mode)
+            r.modes[mode] = score(hits, g["relevant"])
+            if mode == "vector" and hits:
+                r.best_cos = hits[0].cos_sim
+        results.append(r)
+    return results, summarize(results)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--k", type=int, default=K)
+    ap.add_argument("--json", type=Path, help="把逐题结果和汇总写到这个文件")
+    args = ap.parse_args(argv)
+
+    try:
+        results, summary = run(args.k)
+    except Exception as e:  # noqa: BLE001 —— 没跑成的原因很多，统一给提示、退出码 2
+        print(f"✗ 检索评测没跑成：{type(e).__name__}: {e}", file=sys.stderr)
+        print("  检查：make up（数据库）/ make ingest（知识库）/ aws login --profile chemq（凭证）",
+              file=sys.stderr)
+        return 2
+
+    print_report(results, summary)
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "k": args.k,
+            "summary": summary,
+            "questions": [
+                {**{x: v for x, v in asdict(r).items() if x != "modes"},
+                 "modes": {m: {**asdict(mr), "hit": mr.hit} for m, mr in r.modes.items()}}
+                for r in results
+            ],
+        }
+        args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n✓ 明细写到 {args.json}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

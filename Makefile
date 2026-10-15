@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed reset psql sql \
-        install install-db install-rag install-all ingest ingest-dry test eval eval-dry agg agg-vs runs lint gateway clean
+        install install-db install-rag install-all ingest ingest-dry test eval eval-dry eval-rag agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -107,6 +107,10 @@ eval-dry:        ## 不调 API，只自检评测集
 
 eval:            ## 跑评测  用法: make eval WEEK=1
 	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --json ../eval-report.json
+
+eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@5、Recall@5（需先 make ingest）
+	@mkdir -p runs
+	cd ai && uv run python evals/run_retrieval.py --json ../runs/retrieval.json
 
 agg:             ## 聚合多次评测  用法: make agg G=after   (读 runs/after-*.json)
 	@cd ai && uv run python evals/aggregate.py ../runs/$${G:-after}-*.json --name "$${G:-after}"
