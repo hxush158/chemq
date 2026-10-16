@@ -2,8 +2,9 @@
   // --- Python ---
   // 解释器指向 uv 建的虚拟环境。先 make install，这个路径才会存在。
   "python.defaultInterpreterPath": "${workspaceFolder}/ai/.venv/bin/python",
-  // 让 Pylance 能解析 `from chemq import ...`（源码在 ai/src 下）
-  "python.analysis.extraPaths": ["${workspaceFolder}/ai/src"],
+  // 让 Pylance 能解析 `from chemq import ...`（源码在 ai/src 下），
+  // 以及评测脚本之间的互相引用（run_kb_answer.py / 测试里 `import run_retrieval`，在 ai/evals 下）
+  "python.analysis.extraPaths": ["${workspaceFolder}/ai/src", "${workspaceFolder}/ai/evals"],
   "python.analysis.typeCheckingMode": "basic",
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": ["ai/tests"],
@@ -47,5 +48,9 @@
     "**/.ruff_cache": true
   },
   "files.associations": { "*.jsonl": "jsonl" },
-  "search.exclude": { "ai/.venv": true, "db/02_seed.sql": true }
+  "search.exclude": {
+    "ai/.venv": true,
+    "db/02_seed.sql": true
+  },
+  "makefile.configureOnOpen": false
 }

@@ -137,7 +137,7 @@ def load_cases(week: int) -> list[dict]:
     return [c for c in cases if c["week"] <= week]
 
 
-def evaluate(case: dict, week: int, rep: Report, dry: bool) -> None:
+def evaluate(case: dict, week: int, rep: Report, dry: bool) -> str:
     """TODO(W1): 接上 router.plan()
        TODO(W2): 接上 text2sql.generate_and_run()
        TODO(W3): 接上 rag.hybrid_search() 并校验 citations

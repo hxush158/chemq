@@ -44,7 +44,9 @@ SYSTEM_ROLE = """你是示例化工经营分析系统的问题解析器。
 判定规则：
 - metric_query：能用指标字典里的指标 + 时间范围回答
 - knowledge_lookup：问的是制度、口径定义、规程（"综合能耗怎么算"）
-- mixed：只要除了数字之外还需要查文档，就是 mixed
+- mixed：只要除了数字之外还需要查文档，就是 mixed。
+  问题里**描述了某个指标的情况**（偏高、偏低、只有多少、下降了）并追问原因的，也是 mixed：
+  用户说的数字要用数据核实，原因要查文档。不要因为数字已经写在问题里，就判成 knowledge_lookup。
 - out_of_scope：指标字典里没有的指标（成本、利润、人工），或非经营分析问题
 时间推算规则（**这里最容易错一个月**，务必按下面的算法做）：
 - 基准月 = 基准时间所在的自然月。基准 2026-09-14 → 基准月 2026-09。
@@ -110,6 +112,11 @@ FEW_SHOT_EXAMPLES = """
 用户提问：基准时间：2026-09-14
 用户问题：上个月各大区的回款是多少？
 解析结果：{"intent": "metric_query", "metrics": ["回款"], "dimensions": ["大区"], "time_range": {"start": "2026-08-01", "end": "2026-08-31", "grain": "month"}, "needs_knowledge": false, "reasoning": "基准月 2026-09，上个月即 2026-08，整月闭区间。"}
+
+[示例 11] (问题里已经描述了指标情况，追问原因：仍是 mixed)
+用户提问：基准时间：2026-09-14
+用户问题：9月甲醇装置负荷率偏低是什么原因？
+解析结果：{"intent": "mixed", "metrics": ["负荷率"], "dimensions": ["装置"], "filters": {"装置": "甲醇装置"}, "time_range": {"start": "2026-09-01", "end": "2026-09-30", "grain": "month"}, "needs_knowledge": true, "reasoning": "用户说负荷率偏低，这个情况要先用数据核实（查 9 月甲醇装置负荷率），原因要查文档，所以是 mixed，不是只查文档的 knowledge_lookup。"}
 """
 
 def data_range() -> str:

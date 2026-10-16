@@ -139,11 +139,14 @@ def answer_from_kb(
         max_tokens=1024,
     )
     text, cites = parse_answer(res.content, hits)
-    common = dict(citations=cites, cost_usd=res.usage.cost_usd, hits=hits, signals=signals)
+
+    def result(answer: str, refused: bool, kind: str | None = None) -> KbResult:
+        # 不用 dict(...) + **展开：Pylance 会把几种值的类型并成一个 union，每个参数都报类型不匹配
+        return KbResult(answer=answer, refused=refused, kind=kind, citations=cites,
+                        cost_usd=res.usage.cost_usd, hits=hits, signals=signals)
 
     if NOT_COVERED in text:                     # 不只看开头：标记出现在哪都按未覆盖处理（fail-closed）
-        return KbResult(answer=text.replace(NOT_COVERED, "").strip(), refused=True,
-                        kind="not_covered", **common)
+        return result(text.replace(NOT_COVERED, "").strip(), True, "not_covered")
     if not cites:
-        return KbResult(answer=NO_CITATION_TEXT, refused=True, kind="no_citation", **common)
-    return KbResult(answer=text, refused=False, **common)
+        return result(NO_CITATION_TEXT, True, "no_citation")
+    return result(text, False)

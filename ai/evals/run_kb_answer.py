@@ -125,7 +125,7 @@ def print_report(rows: list[Row], s: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--json", type=Path)
     ap.add_argument("--only", help="只跑这些题，逗号分隔，如 K13,K19")
     args = ap.parse_args(argv)

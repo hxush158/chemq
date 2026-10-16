@@ -88,7 +88,7 @@ def test_hybrid_search_passes_params(monkeypatch):
     seen = {}
 
     def fake_run_query(sql, region=None, params=None):
-        seen.update(params)
+        seen.update(params or {})
         return [dict(chunk_id=1, doc_id="D1", title="能耗考核办法", content=DOC,
                      rrf=0.03, cos_sim=0.61, vec_rank=1, bm_rank=2)]
 
@@ -107,7 +107,7 @@ def test_hybrid_search_passes_params(monkeypatch):
 def test_mode_switches_off_one_leg(monkeypatch, mode, n_vec, n_bm):
     """评测用：关掉一路 = 那一路 LIMIT 0，三种方式跑同一段 SQL。"""
     seen = {}
-    monkeypatch.setattr(rag, "run_query", lambda sql, region=None, params=None: seen.update(params) or [])
+    monkeypatch.setattr(rag, "run_query", lambda sql, region=None, params=None: seen.update(params or {}) or [])
     hybrid_search("能耗怎么算", [0.0] * 1024, mode=mode)
     assert (seen["n_vec"], seen["n_bm"]) == (n_vec, n_bm)
 

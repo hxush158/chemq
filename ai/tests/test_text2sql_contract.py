@@ -4,12 +4,14 @@
   ② 答不了时有正规的拒答出口，而不是把拒绝写成 SQL 字面量
   ③ 成本包含生成 SQL 的那次调用，包括拒答和被护栏拦下的情况
 """
+from typing import cast
+
 import pytest
 
 from chemq import pipeline
 from chemq import text2sql as t2s
-from chemq.llm import LlmResult, Usage
-from chemq.schemas import QueryPlan, SqlCandidate
+from chemq.llm import Llm, LlmResult, Usage
+from chemq.schemas import Intent, QueryPlan, SqlCandidate
 from chemq.sqlguard import check
 from chemq.text2sql import SqlRun, Unanswerable, build_user_message, generate_and_run
 
@@ -51,7 +53,7 @@ def test_user_message_carries_question_and_as_of():
 def test_question_reaches_the_model(monkeypatch):
     monkeypatch.setattr(t2s, "run_query", lambda sql, region=None: [{"v": 1}])
     fake = FakeLlm(SqlCandidate(sql="SELECT plant_name FROM chem.v_plant_daily"))
-    generate_and_run(PLAN, question="9月一次合格率最低的两个装置？", as_of="2026-09-14", llm=fake)
+    generate_and_run(PLAN, question="9月一次合格率最低的两个装置？", as_of="2026-09-14", llm=cast(Llm, fake))
     assert "最低的两个" in fake.calls[0]["user"]
 
 
@@ -60,7 +62,7 @@ def test_question_reaches_the_model(monkeypatch):
 def test_model_refusal_raises_unanswerable_with_cost():
     fake = FakeLlm(SqlCandidate(refuse_reason="对比期 2025-01~09 无数据"))
     with pytest.raises(Unanswerable) as ei:
-        generate_and_run(PLAN, llm=fake)
+        generate_and_run(PLAN, llm=cast(Llm, fake))
     assert ei.value.kind == "model_refused"
     assert "对比期" in ei.value.reason
     assert ei.value.cost_usd == pytest.approx(SONNET.cost_usd)   # 拒答也花了钱
@@ -71,7 +73,7 @@ def test_literal_refusal_sql_is_caught_by_guard():
     lit = "SELECT '查询被拒绝：数据覆盖区间为2025-10-01至2026-09-30' AS 提示"
     fake = FakeLlm(SqlCandidate(sql=lit))
     with pytest.raises(Unanswerable) as ei:
-        generate_and_run(PLAN, llm=fake)
+        generate_and_run(PLAN, llm=cast(Llm, fake))
     assert ei.value.kind == "guard_rejected"
     assert ei.value.sql == lit                                    # 原 SQL 留着，便于排查
     assert ei.value.cost_usd == pytest.approx(SONNET.cost_usd)
@@ -96,7 +98,7 @@ def test_normal_query_still_passes_guard():
 
 def test_parse_failure_is_unanswerable_not_crash():
     with pytest.raises(Unanswerable) as ei:
-        generate_and_run(PLAN, llm=FakeLlm(None))
+        generate_and_run(PLAN, llm=cast(Llm, FakeLlm(None)))
     assert ei.value.kind == "parse_failed"
 
 
@@ -109,14 +111,14 @@ def test_unanswerable_is_still_a_permission_error():
 
 def test_success_path_carries_sql_cost(monkeypatch):
     monkeypatch.setattr(t2s, "run_query", lambda sql, region=None: [{"v": 1}])
-    run = generate_and_run(PLAN, llm=FakeLlm(SqlCandidate(sql="SELECT 产量_t FROM chem.v_plant_daily")))
+    run = generate_and_run(PLAN, llm=cast(Llm, FakeLlm(SqlCandidate(sql="SELECT 产量_t FROM chem.v_plant_daily"))))
     assert isinstance(run, SqlRun)
     assert run.rows == [{"v": 1}]
     assert "LIMIT 500" in run.sql.upper()
     assert run.cost_usd == pytest.approx(SONNET.cost_usd)
 
 
-def _fake_plan(intent="metric_query"):
+def _fake_plan(intent: Intent = "metric_query"):
     def f(_question):
         return LlmResult(
             parsed=QueryPlan(intent=intent, needs_knowledge=False, reasoning="r"), usage=HAIKU

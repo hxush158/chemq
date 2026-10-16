@@ -291,7 +291,7 @@ def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--k", type=int, default=K)
     ap.add_argument("--json", type=Path, help="把逐题结果和汇总写到这个文件")
     args = ap.parse_args(argv)

@@ -1,6 +1,7 @@
 """ingest 单测 —— 用假的 Embedder 和假游标，不连数据库、不调 AWS。"""
 import io
 import json
+from typing import Any
 
 import pytest
 
@@ -32,7 +33,7 @@ class FakeEmbedder:
 
 class FakeCursor:
     def __init__(self, existing=()):
-        self.calls: list[tuple[str, object]] = []
+        self.calls: list[tuple[str, Any]] = []
         self._rows = [{"doc_id": x} for x in existing]
 
     def execute(self, sql, params=None):
@@ -95,7 +96,8 @@ def test_dry_run_needs_no_aws_or_db(capsys):
 
 class FakeBedrock:
     def __init__(self, dim=1024, fail=None):
-        self.dim, self.fail, self.req = dim, fail, None
+        self.dim, self.fail = dim, fail
+        self.req: dict[str, Any] = {}
 
     def invoke_model(self, **kw):
         if self.fail:
