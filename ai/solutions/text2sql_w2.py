@@ -30,7 +30,7 @@ def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, l
     # 先选失败模式好定位的那个，等视图涨到几十个再上检索。
     system = Llm.cached_system(
         SYSTEM_ROLE,
-        "# 语义层定义\n```sql\n" + schema_context() + "\n```",
+        schema_context(),
         "# 指标口径字典\n" + load_metric_dictionary(),
     )
 

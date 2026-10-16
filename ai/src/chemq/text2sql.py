@@ -32,7 +32,8 @@ from .sqlguard import check
 _SYSTEM_ROLE_TMPL = """你是 {ENGINE} 专家，为示例化工经营分析系统生成只读 SQL。
 
 硬性约束：
-1. 只能 SELECT，且只能查下列语义层视图，禁止查 fact_* / dim_* 明细表之外的任何对象。
+1. 只能 SELECT，且只能查「语义层目录」里列出的视图和维度表。目录里没有的表和列都不存在，
+   fact_* 明细表一律不可访问，也不要猜英文底层列名。
 2. 指标口径必须引用指标字典；字典里没有的指标一律不要造。
 3. 不要在 SQL 里硬编码折标煤系数、税率等参数，从维度表取。
 4. 同比/环比必须同时返回两期原值。
@@ -54,6 +55,10 @@ _SYSTEM_ROLE_TMPL = """你是 {ENGINE} 专家，为示例化工经营分析系�
 12. 环比/同比要返回两期的原值各一行，不要压成一行再加一个差值列。
 13. 用语义层视图答不了时（指标不存在、所需时间段没有数据），把原因写进 refuse_reason、sql 留空。
     绝不要把拒绝写成 SELECT '…' 字面量 —— 那会被当成一条正常结果返回给用户。
+14. 按名称过滤（装置、产品、客户、大区、能源）只能用目录「维度取值」里的原值，一字不差，
+    或者改用对应的 ID 列；不要缩写或改写名称，不要用 LIKE 模糊匹配。
+15. 问「是多少 / 有多少 / 多高」这类，按问题的时间范围汇总成结果；
+    只有明确要求「按天 / 逐日 / 每天 / 列出明细」时才返回明细行。
 """
 
 DIALECT_PROFILE: dict[str, dict[str, str]] = {
@@ -87,27 +92,31 @@ SYSTEM_ROLE = system_role("postgres")
 
 
 def schema_context(dialect: str | None = None) -> str:
-    """TODO(W2): 从 db 读 information_schema + COMMENT 动态生成，
-    先手写一版，跑通后再改成自动生成（生产系统必须自动生成，否则 schema 漂移）。
+    """给模型看的「语义层目录」：能查哪些视图/维度表、有哪些列、维度有哪些取值。
 
-    路径解析留了 W5 的口子：db/<dialect>/03_semantic_views.sql 存在就用它，
-    否则回落到现在平铺的 db/03_semantic_views.sql。
-    W5 真把 db/ 拆成 db/postgres/ + db/doris/ 时，这个函数一行都不用改。
+    由 db/build_catalog.py 从数据库生成（make catalog / make seed），提交进仓库。
+    以前这里直接返回 03_semantic_views.sql 原文 —— 视图定义里的 `FROM fact_sales`、
+    `received_cny` 被模型学去，查明细表、用英文底层列名（W3 主评测 Q004）。
+
+    路径解析留了 W5 的口子：db/<dialect>/semantic_catalog.md 存在就用它，
+    否则回落到平铺的 db/semantic_catalog.md（只对 postgres）。
     """
     dialect = dialect or settings().sql_dialect
     root = Path(__file__).resolve().parents[3] / "db"
 
-    per_dialect = root / dialect / "03_semantic_views.sql"
+    per_dialect = root / dialect / "semantic_catalog.md"
     if per_dialect.exists():
         return per_dialect.read_text(encoding="utf-8")
 
-    flat = root / "03_semantic_views.sql"
-    if dialect == "postgres" and flat.exists():
-        return flat.read_text(encoding="utf-8")
+    flat = root / "semantic_catalog.md"
+    if dialect == "postgres":
+        if flat.exists():
+            return flat.read_text(encoding="utf-8")
+        raise FileNotFoundError(f"缺少语义层目录 {flat}。先跑 make catalog（需要数据库已 make seed）")
 
     raise NotImplementedError(
-        f"缺少 {dialect} 的语义层定义：{per_dialect} 不存在。"
-        f"Doris 的语义层视图是 W5 交付物，见 docs/weekly/w5.md。"
+        f"缺少 {dialect} 的语义层目录：{per_dialect} 不存在。"
+        f"Doris 的语义层是 W5 交付物，见 docs/weekly/w5.md。"
     )
 
 
@@ -169,7 +178,7 @@ def generate(
     llm = llm or Llm()
     system = Llm.cached_system(
         system_role(),
-        "# 语义层定义\n```sql\n" + schema_context() + "\n```",
+        schema_context(),
         "# 指标口径字典\n" + load_metric_dictionary(),
     )
     return llm.parse(

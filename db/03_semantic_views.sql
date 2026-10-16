@@ -69,6 +69,9 @@ FROM fact_sales s
 JOIN dim_customer c ON c.customer_id = s.customer_id
 JOIN dim_product pr ON pr.product_id = s.product_id;
 
+COMMENT ON VIEW v_sales_daily IS
+'销售日明细（一行一笔订单）。回款率=回款/不含税收入×100，按收付实现制；平均售价=不含税收入/销量，元/吨。汇总时先 sum 再相除，不要对回款率_pct 求平均';
+
 -- 月度经营汇总（给"上月经营情况怎么样"这类问题一个确定的落点）
 --
 -- 【扇出陷阱】这个视图第一版是直接把三张日表 JOIN 在一起的，结果产量被放大了 2.5 倍：

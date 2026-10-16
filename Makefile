@@ -12,7 +12,7 @@ PSQL       ?= docker compose exec -T db psql
 SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
-.PHONY: help doctor doctor-w1 up down logs seed reset psql sql \
+.PHONY: help doctor doctor-w1 up down logs seed catalog reset psql sql \
         install install-db install-rag install-all ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
@@ -68,7 +68,11 @@ seed:            ## 重建数据 + 重算评测集标准答案（改了 naming.y
 		-f $(SQLDIR)/03_semantic_views.sql \
 		-f $(SQLDIR)/04_roles.sql
 	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
-	@echo "✓ 数据与评测集标准答案已重建"
+	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
+	@echo "✓ 数据、评测集标准答案、语义层目录已重建（知识库被清空了，记得 make ingest）"
+
+catalog:         ## 只重新生成语义层目录 db/semantic_catalog.md（text2sql 提示用）
+	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
 
 reset:           ## 连 volume 一起删掉重来（数据全没，慎用）
 	docker compose down -v
