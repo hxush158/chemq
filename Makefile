@@ -108,19 +108,19 @@ eval-dry:        ## 不调 API，只自检评测集
 eval:            ## 跑评测  用法: make eval WEEK=1
 	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --json ../eval-report.json
 
-eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@5、Recall@5（需先 make ingest）
+eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Recall@K（需先 make ingest；默认 8 条，K=5 对比）
 	@mkdir -p runs
-	cd ai && uv run python evals/run_retrieval.py --json ../runs/retrieval.json
+	cd ai && uv run python evals/run_retrieval.py --k $${K:-8} --json ../runs/retrieval-k$${K:-8}.json
 
 eval-kb:         ## 知识库问答评测：检索 + Claude 回答 + 引用（需 API key；用法 make eval-kb ONLY=K13,K19）
 	@mkdir -p runs
 	cd ai && uv run python evals/run_kb_answer.py --json ../runs/kb-latest.json $${ONLY:+--only $$ONLY}
 
-runs-kb:         ## 知识库问答连跑 N 次  用法: make runs-kb N=3
+runs-kb:         ## 知识库问答连跑 N 次  用法: make runs-kb N=3 G=kb-top8（G 是存档名前缀）
 	@mkdir -p runs
 	@for i in $$(seq 1 $${N:-3}); do \
 		echo "=== 第 $$i 次 ==="; \
-		(cd ai && uv run python evals/run_kb_answer.py --json ../runs/kb-$$i.json | tail -7) || true; \
+		(cd ai && uv run python evals/run_kb_answer.py --json ../runs/$${G:-kb}-$$i.json | tail -7) || true; \
 	done
 
 agg:             ## 聚合多次评测  用法: make agg G=after   (读 runs/after-*.json)

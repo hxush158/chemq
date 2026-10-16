@@ -8,8 +8,9 @@
 
 指标（只在有标准答案的题上算，即 kind != no_hit）：
   Hit@1     第 1 条就是正确章节。知识库很小时（34 块）Hit@5 几乎总是满分、分不出高低，看这个。
-  Hit@5     前 5 条里至少有一条是标注的正确章节。生成答案只需要一条对的依据，所以这个最重要。
-  Recall@5  标注的几个正确章节，前 5 条里找到了几个（每题算比例，再取平均）。
+  Hit@K     前 K 条里至少有一条是标注的正确章节。
+  Recall@K  标注的几个正确章节，前 K 条里找到了几个（每题算比例，再取平均）。
+            需要两条依据才能答的题（K04），只看 Hit 会漏掉"缺了一半"，要看这个。
 
 无命中判断（rag.is_no_hit，按混合检索的前 5 条判）：
   误拒      有答案，却判成"没有"
@@ -38,7 +39,7 @@ KB_GOLDEN = ROOT / "ai" / "evals" / "kb_golden.jsonl"
 CACHE = ROOT / "runs" / "kb_query_emb.json"
 MODES = ("vector", "bm25", "hybrid")
 MODE_LABEL = {"vector": "向量", "bm25": "BM25", "hybrid": "混合"}
-K = 5
+K = 8                                            # 和 config.rag_top_k 一致：评测线上用的条数
 NO_ANSWER = ("no_hit", "near_miss")             # 没有标准答案的两类，不算 Hit/Recall
 THRESHOLDS = (0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45)
 
@@ -204,14 +205,15 @@ def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
             cells = "".join(_r(_cell(r.modes[m]), WC) for m in MODES)
         cos = f"{r.best_cos:.3f}" if r.best_cos is not None else "-"
         print(_l(r.id, W0) + _l(r.kind, W1) + cells + _r(cos, 14) + "   " + _verdict(r))
-    print("\n名次 = 第一条正确结果排第几；— = 前 5 条都不对；(x/y) = 标注了 y 个正确章节、找到 x 个")
+    topk = summary.get("k", K)
+    print(f"\n名次 = 第一条正确结果排第几；— = 前 {topk} 条都不对；(x/y) = 标注了 y 个正确章节、找到 x 个")
     print("判定 = 当前阈值下 is_no_hit 的结论及依据；✗ = 判错")
 
     o = summary["overall"]
     print("\n" + _l("", LW) + "".join(_r(MODE_LABEL[m], WC) for m in MODES))
     print(_l(f"Hit@1（{o['hybrid']['n']} 题）", LW) + "".join(_r(f"{o[m]['hit1']:.2f}", WC) for m in MODES))
-    print(_l("Hit@5", LW) + "".join(_r(f"{o[m]['hit']:.2f}", WC) for m in MODES))
-    print(_l("Recall@5", LW) + "".join(_r(f"{o[m]['recall']:.2f}", WC) for m in MODES))
+    print(_l(f"Hit@{topk}", LW) + "".join(_r(f"{o[m]['hit']:.2f}", WC) for m in MODES))
+    print(_l(f"Recall@{topk}", LW) + "".join(_r(f"{o[m]['recall']:.2f}", WC) for m in MODES))
     for k, row in summary["by_kind"].items():
         label = f"  Hit@1 {k}（{row['hybrid']['n']}）"      # 按类型看 Hit@1：Hit@5 全是满分
         print(_l(label, LW) + "".join(_r(f"{row[m]['hit1']:.2f}", WC) for m in MODES))
@@ -249,7 +251,7 @@ def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
     # 混合不应比两路中较好的那一路差
     best_single = max(o["vector"]["hit"], o["bm25"]["hit"])
     if o["hybrid"]["hit"] < best_single:
-        print(f"\n! 混合 Hit@5 {o['hybrid']['hit']:.2f} 低于单路最好的 {best_single:.2f}：RRF 融合有问题，先查这个")
+        print(f"\n! 混合 Hit@{topk} {o['hybrid']['hit']:.2f} 低于单路最好的 {best_single:.2f}：RRF 融合有问题，先查这个")
 
 
 def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
@@ -284,6 +286,7 @@ def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
         results.append(r)
     summary = summarize(results)
     summary["threshold"] = settings().rag_min_cosine
+    summary["k"] = k
     return results, summary
 
 
