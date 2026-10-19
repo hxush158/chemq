@@ -273,7 +273,7 @@ serve = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.70" },
     { name = "boto3", extras = ["crt"], marker = "extra == 'aws'", specifier = ">=1.41" },
-    { name = "claude-agent-sdk", marker = "extra == 'agent'", specifier = ">=0.1" },
+    { name = "claude-agent-sdk", marker = "extra == 'agent'", specifier = ">=0.2" },
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.115" },
     { name = "mcp", marker = "extra == 'agent'", specifier = ">=1.2" },
     { name = "pgvector", marker = "extra == 'db'", specifier = ">=0.3" },

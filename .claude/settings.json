@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__chemq__*"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./ai/.env)"
+    ]
+  }
+}

@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 db    = ["psycopg[binary,pool]>=3.2", "pgvector>=0.3"]   # W2 起
-agent = ["claude-agent-sdk>=0.1", "mcp>=1.2"]            # W4 起
+agent = ["claude-agent-sdk>=0.2", "mcp>=1.2"]            # W4 起（Agent SDK 自带 Claude Code 程序）
 serve = ["fastapi>=0.115", "uvicorn[standard]>=0.32"]    # W5 起
 aws   = ["boto3[crt]>=1.41"]                             # W3 起：Titan 向量化。>=1.41+crt 才能读 aws login 的凭证
 dev   = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.7", "python-dotenv>=1.0"]

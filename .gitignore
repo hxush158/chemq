@@ -25,3 +25,6 @@ Claude outputs/
 *.log
 *.pem
 .idea/
+
+# Claude Code 的个人设置（「不再询问」存下来的规则会写进这里），不进仓库
+.claude/settings.local.json

@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed catalog reset psql sql \
-        install install-db install-rag install-all ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
+        install install-db install-rag install-agent install-all mcp ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -93,6 +93,12 @@ install-db:      ## 加装数据库依赖（W2 起）
 
 install-rag:     ## 加装 RAG 依赖（W3 起：数据库 + boto3[crt]）
 	cd ai && uv sync --extra dev --extra db --extra aws
+
+install-agent:   ## 加装 Agent 依赖（W4 起：数据库 + boto3 + claude-agent-sdk + mcp）
+	cd ai && uv sync --extra dev --extra db --extra aws --extra agent
+
+mcp:             ## 前台跑 MCP server（stdio，一般由 Claude Code 拉起，手动跑只用来看能不能启动）
+	cd ai && uv run python -m chemq.mcp_server
 
 install-all:     ## 全装（W4 起：Agent SDK / MCP / FastAPI / boto3）
 	cd ai && uv sync --all-extras
