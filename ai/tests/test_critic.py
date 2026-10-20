@@ -46,6 +46,24 @@ def test_ratio_is_not_accepted():
     assert not v.ok and v.unverified == ["0.40"]
 
 
+def test_wan_scaling_only_when_followed_by_wan():
+    rows = [{"收入": "6792858.38", "回款": "2465686.77"}]
+    assert critic.check("收入 679.29万元，回款 246.57万元", rows).ok
+
+
+def test_ten_times_unit_error_is_caught():
+    """真实发生过：Agent 把 71,779.889 吨写成"71.8 万吨"（应为 7.18 万吨），评测 exec_acc 照样满分。"""
+    rows = [{"产量_t": "71779.889"}, {"产量_t": "74388.941"}]
+    v = critic.check("产量在71.8～74.4万吨区间波动", rows)
+    assert not v.ok and v.unverified == ["71.8", "74.4"]
+    assert critic.check("产量在7.18～7.44万吨区间波动", rows).ok
+
+
+def test_numbers_from_question_count():
+    v = critic.check("最近6个月产量如下", rows=[], question="把最近6个月的产量按月列出来")
+    assert v.ok
+
+
 def test_refs_are_not_numbers():
     assert critic.numbers_in_text("检修月不考核 [KB-ENE-2026#7]") == []
 

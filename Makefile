@@ -12,8 +12,8 @@ PSQL       ?= docker compose exec -T db psql
 SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
-.PHONY: help doctor doctor-w1 up down logs seed catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
+.PHONY: help doctor doctor-w1 up down logs seed golden catalog reset psql sql \
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -71,6 +71,9 @@ seed:            ## 重建数据 + 重算评测集标准答案（改了 naming.y
 	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
 	@echo "✓ 数据、评测集标准答案、语义层目录已重建（知识库被清空了，记得 make ingest）"
 
+golden:          ## 只重算评测集标准答案（golden.jsonl + holdout.jsonl），不动数据库数据
+	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
+
 catalog:         ## 只重新生成语义层目录 db/semantic_catalog.md（text2sql 提示用）
 	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
 
@@ -100,6 +103,9 @@ install-agent:   ## 加装 Agent 依赖（W4 起：数据库 + boto3 + claude-ag
 agent:           ## 用 Agent SDK 回答一个问题并打印调用过程  用法: make agent Q="上个月哪个装置单位能耗最高"
 	cd ai && uv run python -m chemq.agents "$$Q"
 
+agent-c:         ## 破坏实验 C：不限制自带工具，只靠 hook 拦  用法: make agent-c Q="..."
+	cd ai && CHEMQ_AGENT_EXPERIMENT_C=1 uv run python -m chemq.agents "$$Q"
+
 mcp:             ## 前台跑 MCP server（stdio，一般由 Claude Code 拉起，手动跑只用来看能不能启动）
 	cd ai && uv run python -m chemq.mcp_server
 
@@ -118,8 +124,8 @@ test:            ## 跑单元测试（SQL 护栏在这里）
 eval-dry:        ## 不调 API，只自检评测集
 	cd ai && uv run python evals/run_eval.py --week 6 --dry
 
-eval:            ## 跑评测  用法: make eval WEEK=1  （W4：ENGINE=agent 换成 Agent SDK 做法）
-	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --json ../eval-report.json
+eval:            ## 跑评测  用法: make eval WEEK=1  （W4：ENGINE=agent 换做法，SET=holdout 跑新题）
+	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --set $${SET:-golden} --json ../eval-report.json
 
 eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Recall@K（需先 make ingest；默认 8 条，K=5 对比）
 	@mkdir -p runs
@@ -128,6 +134,9 @@ eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Reca
 eval-kb:         ## 知识库问答评测：检索 + Claude 回答 + 引用（需 API key；用法 make eval-kb ONLY=K13,K19）
 	@mkdir -p runs
 	cd ai && uv run python evals/run_kb_answer.py --json ../runs/kb-latest.json $${ONLY:+--only $$ONLY}
+
+critic-lab:      ## 破坏实验 B：往 Agent 回答里塞假数字看 Critic 抓不抓得住（REFRESH=1 重新让 Agent 答题）
+	cd ai && uv run python evals/critic_lab.py $${REFRESH:+--refresh}
 
 runs-kb:         ## 知识库问答连跑 N 次  用法: make runs-kb N=3 G=kb-top8（G 是存档名前缀）
 	@mkdir -p runs

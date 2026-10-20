@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -73,6 +74,8 @@ class AgentRun:
     tools_available: list[str] = field(default_factory=list)          # init 消息里 Agent 实际看到的工具
     num_turns: int = 0
     stop: str = ""                                                    # success / error_max_turns / ...
+    rows_all: list[dict[str, Any]] = field(default_factory=list)      # 所有成功查询的结果行（Critic 的数据源）
+    cited_texts: list[str] = field(default_factory=list)              # 标了出处的资料原文（Critic 的数据源）
 
 
 class Recorder:
@@ -176,7 +179,7 @@ def infer_intent(rec: Recorder, refused: bool) -> str:
     return "metric_query"
 
 
-def to_answer(text: str, rec: Recorder, *, cost: float, stop: str) -> Answer:
+def to_answer(text: str, rec: Recorder, *, cost: float, stop: str, question: str = "") -> Answer:
     refused = CANNOT_ANSWER in text
     shown = text.replace(CANNOT_ANSWER, "").strip()
     last = rec.last_ok_sql
@@ -198,6 +201,7 @@ def to_answer(text: str, rec: Recorder, *, cost: float, stop: str) -> Answer:
     verdict = critic.check(
         shown, rec.all_rows(),
         texts=[c.snippet for c in cites],           # 只认标了出处的资料：没标就用了它的数字，也算没依据
+        question=question,                          # 用户自己说的数字也算依据
     ) if not refused else critic.Verdict(ok=True)
     if not verdict.ok:
         caveats.append("这些数字在查询结果和引用原文里都找不到：" + "、".join(verdict.unverified))
@@ -237,9 +241,12 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
     env = {"ENABLE_TOOL_SEARCH": "false"}
     if s.anthropic_api_key:
         env["ANTHROPIC_API_KEY"] = s.anthropic_api_key
+    # 破坏实验 C：不传 tools=[]，Agent 能看到 Claude Code 自带的全部工具（Bash、Read……）。
+    # PreToolUse hook 不动 —— 验证"第一道防线拿掉后，第二道还在"。只在实验时打开。
+    experiment_c = os.environ.get("CHEMQ_AGENT_EXPERIMENT_C") == "1"
     options = ClaudeAgentOptions(
         system_prompt=SYSTEM_PROMPT.format(as_of=as_of, data_range=data_range()),
-        tools=[],                                   # 去掉全部自带工具
+        tools=None if experiment_c else [],         # 去掉全部自带工具
         mcp_servers={SERVER: create_sdk_mcp_server(name=SERVER, tools=build_tools(rec, region))},
         allowed_tools=list(ALLOWED),                # 只是"不用问"，不是限制
         setting_sources=[],
@@ -268,8 +275,11 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
     stop = getattr(result, "subtype", "") or "no_result"
     final = (getattr(result, "result", None) or (texts[-1] if texts else "")).strip()
     cost = float(getattr(result, "total_cost_usd", 0.0) or 0.0)
+    ans = to_answer(final, rec, cost=cost, stop=stop, question=question)
     return AgentRun(
-        answer=to_answer(final, rec, cost=cost, stop=stop),
+        answer=ans,
+        rows_all=rec.all_rows(),
+        cited_texts=[c.snippet for c in ans.citations],
         tool_calls=rec.audit,
         tools_available=available,
         num_turns=int(getattr(result, "num_turns", 0) or 0),
@@ -291,8 +301,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--region", default=None)
     a = ap.parse_args(argv)
 
+    if os.environ.get("CHEMQ_AGENT_EXPERIMENT_C") == "1":
+        print("⚠ 破坏实验 C：没有传 tools=[]，Agent 能看到全部自带工具；只靠 PreToolUse hook 拦\n")
     run = asyncio.run(orchestrate(a.question, as_of=a.as_of, region=a.region))
-    print(f"Agent 看到的工具：{run.tools_available}")
+    shown = run.tools_available if len(run.tools_available) <= 6 else (
+        run.tools_available[:12] + [f"…共 {len(run.tools_available)} 个"])
+    print(f"Agent 看到的工具：{shown}")
     print(f"结束方式：{run.stop}   轮数：{run.num_turns}   成本：${run.answer.cost_usd:.4f}\n")
     for i, c in enumerate(run.tool_calls, 1):
         mark = "" if c["allowed"] else "  ← 被 hook 拒绝"

@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
 GOLDEN = ROOT / "ai" / "evals" / "golden.jsonl"
+HOLDOUT = ROOT / "ai" / "evals" / "holdout.jsonl"
 TOL_PCT = 0.5   # 数值容差 0.5%：浮点和四舍五入的差异不算错
 
 # 每类断言从第几周起「到期」。没到期的不计分、不算失败，只记为 pending。
@@ -132,8 +133,8 @@ def rows_match(actual: list[dict], expected: list[dict]) -> bool:
     return not remaining
 
 
-def load_cases(week: int) -> list[dict]:
-    cases = [json.loads(line) for line in GOLDEN.read_text(encoding="utf-8").splitlines() if line]
+def load_cases(week: int, path: Path = GOLDEN) -> list[dict]:
+    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     return [c for c in cases if c["week"] <= week]
 
 
@@ -233,6 +234,8 @@ def main() -> int:
     ap.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
                     help="output_config.effort。Haiku 4.5 不支持")
     ap.add_argument("--label", help="这次运行的名字，写进报告，对比时用")
+    ap.add_argument("--set", dest="case_set", choices=["golden", "holdout"], default="golden",
+                    help="golden=主评测 20 题（默认）；holdout=W4 新题验证集，跑完不许再拿来调规则")
     ap.add_argument("--engine", choices=["pipeline", "agent"], default="pipeline",
                     help="pipeline=固定流程（默认）；agent=Agent SDK 分析员（W4）")
     args = ap.parse_args()
@@ -243,7 +246,7 @@ def main() -> int:
     if args.effort:
         os.environ["CHEMQ_EFFORT"] = args.effort
 
-    cases = load_cases(args.week)
+    cases = load_cases(args.week, HOLDOUT if args.case_set == "holdout" else GOLDEN)
     if args.only:
         want = {x.strip().upper() for x in args.only.split(",")}
         cases = [c for c in cases if c["id"].upper() in want]
@@ -251,7 +254,7 @@ def main() -> int:
         if missing:
             print(f"⚠ 这些题号在 week<={args.week} 的范围里不存在：{sorted(missing)}")
     rep = Report()
-    print(f"评测集: {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
+    print(f"评测集: {args.case_set} {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
 
     for c in cases:
         try:
@@ -314,11 +317,14 @@ def main() -> int:
             label += f"+{args.effort}"
         if args.engine != "pipeline":
             label += f"+{args.engine}"
+        if args.case_set != "golden":
+            label += f"+{args.case_set}"
         report = {
             "label": label,
             "config": {
                 "week": args.week,
                 "engine": args.engine,
+                "set": args.case_set,
                 "model_router": os.environ.get("CHEMQ_MODEL_ROUTER", "(用 .env 的值)"),
                 "effort": args.effort or os.environ.get("CHEMQ_EFFORT", "(默认)"),
                 "only": args.only,

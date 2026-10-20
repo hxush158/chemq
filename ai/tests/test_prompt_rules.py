@@ -36,3 +36,19 @@ def test_rule16_keeps_the_named_comparison_period():
     r = system_role("postgres")
     assert "点名的对比期" in r and "两期都要返回" in r
     assert "或对比维度" not in r
+
+
+def test_holdout_questions_never_appear_in_any_prompt():
+    """新题验证集的题目不能出现在任何提示词、示例、工具说明里，否则验证就失效了。"""
+    from chemq import agents, tools
+    from chemq.text2sql import system_role
+
+    holdout = GOLDEN.parent / "holdout.jsonl"
+    if not holdout.exists():
+        pytest.skip("先 make golden 生成 holdout.jsonl")
+    prompts = [router.SYSTEM_ROLE, router.FEW_SHOT_EXAMPLES, system_role("postgres"),
+               agents.SYSTEM_PROMPT, tools.DESC_RUN_SQL]
+    for line in holdout.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            q = json.loads(line)["question"]
+            assert not any(q in p for p in prompts), q
