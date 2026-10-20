@@ -13,7 +13,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
+        install install-db install-rag install-agent install-all mcp agent ingest ingest-dry test eval eval-dry eval-rag eval-kb runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -97,6 +97,9 @@ install-rag:     ## 加装 RAG 依赖（W3 起：数据库 + boto3[crt]）
 install-agent:   ## 加装 Agent 依赖（W4 起：数据库 + boto3 + claude-agent-sdk + mcp）
 	cd ai && uv sync --extra dev --extra db --extra aws --extra agent
 
+agent:           ## 用 Agent SDK 回答一个问题并打印调用过程  用法: make agent Q="上个月哪个装置单位能耗最高"
+	cd ai && uv run python -m chemq.agents "$$Q"
+
 mcp:             ## 前台跑 MCP server（stdio，一般由 Claude Code 拉起，手动跑只用来看能不能启动）
 	cd ai && uv run python -m chemq.mcp_server
 
@@ -115,8 +118,8 @@ test:            ## 跑单元测试（SQL 护栏在这里）
 eval-dry:        ## 不调 API，只自检评测集
 	cd ai && uv run python evals/run_eval.py --week 6 --dry
 
-eval:            ## 跑评测  用法: make eval WEEK=1
-	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --json ../eval-report.json
+eval:            ## 跑评测  用法: make eval WEEK=1  （W4：ENGINE=agent 换成 Agent SDK 做法）
+	cd ai && uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --json ../eval-report.json
 
 eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Recall@K（需先 make ingest；默认 8 条，K=5 对比）
 	@mkdir -p runs

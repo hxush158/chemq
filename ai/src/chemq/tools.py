@@ -21,6 +21,21 @@ from typing import Any, Callable
 
 from .config import settings
 
+# 工具说明只写这一份，MCP server 和 Agent SDK 都用它。
+# 输出约定写在这里而不是某个调用方的提示词里：写在提示词里的规则，换个调用方就没了
+# （W4：Agent 拿不到 text2sql 的 16 条规则，exec_acc 0.97 → 0.44，主要输在结果形状上）。
+DESC_LIST_METRICS = "返回指标口径字典和语义层目录（能查哪些视图、有哪些列、维度取值）。写 SQL 前先调这个。"
+DESC_RUN_SQL = (
+    "执行一条只读 SQL（PostgreSQL），只能查语义层目录里的视图和维度表，会自动加 LIMIT。返回 ok/rows；"
+    "ok=false 时看 violations 或 error，改了再试。\n"
+    "结果集约定（结果要能直接给人看，也要能被程序比对）：\n"
+    "1. 月份列用 to_char(<日期列>, 'YYYY-MM') 输出，不要返回 date；问题没要求按月就不要加月份列。\n"
+    "2. 问「哪个/谁…最高/最低」只返回那 1 行（排序后 LIMIT 1）；问「前 N 个」返回 N 行。排序方向按问题里的方向词。\n"
+    "3. 环比/同比/两期对比：返回两期的原值各一行，不要压成一行差值。\n"
+    "4. 只返回问题要的列；比例、均值按「先 sum 再相除」在 SQL 里算好。"
+)
+DESC_SEARCH = "检索公司制度、指标口径、月度经营分析报告。found=false 表示知识库里没有相关资料。"
+
 MAX_ROWS_TO_MODEL = 200          # 交给模型的行数上限；再多就是在烧 token，不是在分析
 SNIPPET_CHARS = 600
 
@@ -91,6 +106,7 @@ def search_knowledge(
         "signals": signals,
         "hits": [
             {
+                "ref": f"{h.doc_id}#{h.chunk_id}",            # 回答里标出处用，见 agents.py 规则 3
                 "doc_id": h.doc_id,
                 "chunk_id": h.chunk_id,
                 "source": h.content.split("\n", 1)[0],      # 「《标题》 › 章 › 条」

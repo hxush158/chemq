@@ -137,7 +137,7 @@ def load_cases(week: int) -> list[dict]:
     return [c for c in cases if c["week"] <= week]
 
 
-def evaluate(case: dict, week: int, rep: Report, dry: bool) -> str:
+def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipeline") -> str:
     """TODO(W1): 接上 router.plan()
        TODO(W2): 接上 text2sql.generate_and_run()
        TODO(W3): 接上 rag.hybrid_search() 并校验 citations
@@ -151,7 +151,13 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool) -> str:
             return "x"
         return "\u2713"
 
-    from chemq.pipeline import answer  # noqa: PLC0415  这是你要实现的入口
+    # W4：两种做法签名一样，同一套题并排比。
+    #   pipeline  固定流程（Client SDK）：router → text2sql → 知识库
+    #   agent     分析员 Agent（Agent SDK）：自己决定调哪个工具、调几次
+    if engine == "agent":
+        from chemq.agents import answer  # noqa: PLC0415
+    else:
+        from chemq.pipeline import answer  # noqa: PLC0415  这是你要实现的入口
 
     t0 = time.perf_counter()
     result = answer(case["question"], as_of="2026-09-14")
@@ -227,6 +233,8 @@ def main() -> int:
     ap.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
                     help="output_config.effort。Haiku 4.5 不支持")
     ap.add_argument("--label", help="这次运行的名字，写进报告，对比时用")
+    ap.add_argument("--engine", choices=["pipeline", "agent"], default="pipeline",
+                    help="pipeline=固定流程（默认）；agent=Agent SDK 分析员（W4）")
     args = ap.parse_args()
 
     # 必须在 import chemq 之前设 —— settings() 有 lru_cache，读一次就定了
@@ -243,11 +251,11 @@ def main() -> int:
         if missing:
             print(f"⚠ 这些题号在 week<={args.week} 的范围里不存在：{sorted(missing)}")
     rep = Report()
-    print(f"评测集: {len(cases)} 题 (week<={args.week})\n")
+    print(f"评测集: {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
 
     for c in cases:
         try:
-            mark = evaluate(c, args.week, rep, args.dry) or "·"
+            mark = evaluate(c, args.week, rep, args.dry, args.engine) or "·"
         except ModuleNotFoundError:
             print("chemq.pipeline 还没实现 —— 这是 W1 的第一个任务。")
             print("先跑 `python ai/evals/run_eval.py --week 1 --dry` 确认评测集本身没问题。")
@@ -304,10 +312,13 @@ def main() -> int:
         label = args.label or os.environ.get("CHEMQ_MODEL_ROUTER", "default")
         if args.effort:
             label += f"+{args.effort}"
+        if args.engine != "pipeline":
+            label += f"+{args.engine}"
         report = {
             "label": label,
             "config": {
                 "week": args.week,
+                "engine": args.engine,
                 "model_router": os.environ.get("CHEMQ_MODEL_ROUTER", "(用 .env 的值)"),
                 "effort": args.effort or os.environ.get("CHEMQ_EFFORT", "(默认)"),
                 "only": args.only,

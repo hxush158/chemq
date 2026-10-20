@@ -79,6 +79,7 @@ def test_search_knowledge_hit_returns_source_and_text():
     r = tools.search_knowledge("检修期间能耗怎么考核", embedder=FakeEmbedder(),
                                search=lambda q, e: [_hit(0.6, "《办法》 › 第三章 › 第八条\n检修月单耗不考核。")])
     assert r["found"] and r["hits"][0]["source"] == "《办法》 › 第三章 › 第八条"
+    assert r["hits"][0]["ref"] == "KB-ENE-2026#7"
     assert r["hits"][0]["text"] == "检修月单耗不考核。"
 
 

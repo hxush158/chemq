@@ -43,20 +43,17 @@ def _server_class() -> Any:
 def build_server(region: str | None = None) -> Any:
     server = _server_class()("chemq", instructions=INSTRUCTIONS)
 
-    @server.tool()
+    # 工具说明用 tools.py 里的同一份（description= 优先于 docstring）
+    @server.tool(description=tools.DESC_LIST_METRICS)
     def list_metrics() -> str:
-        """返回指标口径字典和语义层目录（能查哪些视图、有哪些列、维度取值）。写 SQL 前先调这个。"""
         return tools.list_metrics()
 
-    @server.tool()
+    @server.tool(description=tools.DESC_RUN_SQL)
     def run_semantic_query(sql: str) -> dict:
-        """执行一条只读 SQL（PostgreSQL）。只能查语义层目录里的视图和维度表，会自动加 LIMIT。
-        返回 ok/rows；ok=false 时看 violations 或 error，改了再试。"""
         return tools.run_semantic_query(sql, region=region)
 
-    @server.tool()
+    @server.tool(description=tools.DESC_SEARCH)
     def search_knowledge(question: str) -> dict:
-        """检索公司制度、指标口径、月度经营分析报告。found=false 表示知识库里没有相关资料。"""
         return tools.search_knowledge(question)
 
     return server
