@@ -141,9 +141,12 @@ def build_tools(rec: Recorder, region: str | None) -> list[Any]:
 def make_hooks(rec: Recorder) -> dict[str, Any]:
     """PreToolUse：记审计 + 白名单之外的工具一律拒绝。PostToolUse：记结束时间。
     hooks 解决"做了什么"（可复盘），tools=[] 解决"能做什么"（事前约束）—— 两者不能互相替代。"""
-    from claude_agent_sdk import HookMatcher  # noqa: PLC0415
+    from claude_agent_sdk import HookJSONOutput, HookMatcher  # noqa: PLC0415
 
-    async def pre(input_data: Any, tool_use_id: str | None, context: Any) -> dict[str, Any]:
+    # 返回类型要标成 SDK 的 HookJSONOutput（TypedDict），标 dict[str, Any] 时 Pylance 报
+    # "dict[str, Any] is not assignable to HookJSONOutput"。运行时没区别，只是类型检查。
+
+    async def pre(input_data: Any, tool_use_id: str | None, context: Any) -> HookJSONOutput:
         name = input_data.get("tool_name", "")
         allowed = name in ALLOWED
         rec.audit.append({"id": tool_use_id, "tool": name, "input": input_data.get("tool_input"),
@@ -156,7 +159,7 @@ def make_hooks(rec: Recorder) -> dict[str, Any]:
             }}
         return {}
 
-    async def post(input_data: Any, tool_use_id: str | None, context: Any) -> dict[str, Any]:
+    async def post(input_data: Any, tool_use_id: str | None, context: Any) -> HookJSONOutput:
         for a in reversed(rec.audit):
             if a["id"] == tool_use_id:
                 a["ms"] = int((time.time() - a["t0"]) * 1000)
