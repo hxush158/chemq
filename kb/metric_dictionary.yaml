@@ -60,6 +60,24 @@ metrics:
     definition: 期间回款金额 / 期间不含税收入
     pitfalls: ["跨期回款不追溯调整，口径为'期间收付实现'，与财务应收账龄表口径不同"]
 
+  - name: 销量
+    en: sales_volume
+    unit: t
+    view: chem.v_sales_daily
+    column: 销量_t
+    definition: 开票口径的销售数量（吨），按期间 sum
+    pitfalls: ["不要用产量（v_plant_daily.产量_t）代替：产量是生产口径，销量是开票口径"]
+
+  - name: 能源成本
+    en: energy_cost
+    unit: CNY
+    view: chem.v_energy_daily
+    column: 能源成本_cny
+    definition: Σ(各能源消耗量 × 能源单价)，按装置、按日汇总，期间 sum
+    pitfalls:
+      - "只含有产量的生产装置；公用工程(P05)没有产量，不在 v_energy_daily 里 —— 问「全厂能源成本」时要说明这一点"
+      - "这是能源费用，不是生产成本；生产成本（制造成本、完全成本）当前没有数据源"
+
   - name: 平均售价
     en: asp
     unit: CNY/t
@@ -83,6 +101,6 @@ dimensions:
 rules:
   - "所有数值必须由 SQL 计算，模型不得自行算数、推算或补全缺失月份"
   - "问题中出现字典里没有的指标时，必须拒答并说明缺哪个口径，不要用近似指标替代"
-  - "涉及成本、利润、人工成本的问题当前无数据源，一律拒答"
+  - "涉及生产成本（制造成本、完全成本）、利润、人工成本的问题当前无数据源，一律拒答；能源成本是支持的指标，不在此列"
   - "超出数据覆盖区间（见 naming.yaml scenarios.date_range）的时间段一律拒答，不要用现有区间近似"
   - "同比/环比必须在 SQL 中显式计算并同时返回两期原值，便于人工复核"

@@ -38,6 +38,18 @@ def test_rule16_keeps_the_named_comparison_period():
     assert "或对比维度" not in r
 
 
+def test_energy_cost_and_sales_volume_are_supported_metrics():
+    """W4 新题验证：「能源成本」带"成本"两个字被一律拒答、「销量」不在字典里被 text2sql 拒答。"""
+    import yaml
+    from chemq.router import load_metric_dictionary
+
+    d = yaml.safe_load(load_metric_dictionary())
+    names = {m["name"] for m in d["metrics"]}
+    assert {"能源成本", "销量"} <= names
+    assert any("能源成本是支持的指标" in r for r in d["rules"])
+    assert "不要因为名字里带\"成本\"两个字" in router.SYSTEM_ROLE
+
+
 def test_holdout_questions_never_appear_in_any_prompt():
     """新题验证集的题目不能出现在任何提示词、示例、工具说明里，否则验证就失效了。"""
     from chemq import agents, tools

@@ -40,6 +40,11 @@ def test_view_columns_are_semantic_names(text):
     assert "回款_cny" in text and "开车率_pct" in text
 
 
+def test_catalog_carries_time_conventions(text):
+    """W4：时间口径只写在 router 提示词里时，Agent 把"近三个月"算成了不含当前月。"""
+    assert "## 时间口径约定" in text and "含基准月在内往前数 N 个自然月" in text
+
+
 def test_schema_context_returns_catalog(text):
     assert schema_context("postgres") == text
 
