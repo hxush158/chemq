@@ -49,7 +49,7 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
         prompt=f"问题：{question}\n\nSQL 结果：\n{json.dumps(rows, ensure_ascii=False)}",
         options=ClaudeAgentOptions(
             system_prompt=NARRATOR_SYSTEM,
-            allowed_tools=[],          # ← 一个工具都不给
+            allowed_tools=[],          # ← 这些工具不用问、直接放行
             permission_mode="default",
             model=settings().model_sql,
         ),

@@ -59,31 +59,40 @@ Unit energy consumption *rises* during the outage because fixed energy load cont
 
 ## Architecture
 
+Two answering engines run side by side and share one tool layer, one semantic layer and one safety layer. `make eval ENGINE=pipeline|agent` runs the same questions through either.
+
 ```
-question
-   │
-   ▼  Router  (Haiku/Sonnet · structured outputs · prompt caching)
-   │  └─ out of scope ──────────────────────────► refuse, with a reason
-   ▼
- SQL Agent ─────────┐        Knowledge Agent (hybrid retrieval: vector + BM25, RRF)
-   │ SqlCandidate   │              │ Citation[]
-   ▼                │              │
- sqlguard  ─ AST validation · allowlist · forced LIMIT
-   │                │              │
-   ▼                │              │
- read-only role + RLS + statement_timeout
-   │ rows           │              │
-   └────────┬───────┴──────────────┘
-            ▼  Narrator — receives rows only, holds no database tool
-            ▼  Critic   — separate call, verifies every number appears in the rows
-         Answer + full audit trail
+                              question
+              ┌──────────────────┴──────────────────┐
+              ▼                                     ▼
+  Pipeline (pipeline.py)                  Agent analyst (agents.py)
+  Router (Haiku, structured outputs)      Agent SDK (Sonnet)
+   ├─ out of scope ─► refuse              tools=[]: no built-in tools at all
+   ├─ metric    → text2sql (Sonnet)       3 in-process tools only
+   ├─ knowledge → kb_answer               PreToolUse hook: audit + deny
+   └─ mixed     → SQL first, then         turn and budget caps
+                  kb_answer with rows     code Critic checks every number
+              └──────────────────┬──────────────────┘
+                                 ▼
+        Shared tools (tools.py): list_metrics · run_semantic_query · search_knowledge
+              │                                         │
+              ▼                                         ▼
+  sqlguard (AST · allowlist · v_* only · LIMIT)   hybrid retrieval (Titan + BM25 + RRF)
+  read-only role + statement_timeout              no-hit check → cited answer or refusal
+  semantic views v_* (metric definitions)
+
+  External agents (Claude Code CLI, …) → mcp_server.py (stdio) → the same tools.py
 ```
+
+There is no separate Narrator step. A metric question returns the SQL rows as the answer. A mixed question's prose comes from `kb_answer`, which is told to copy numbers from the rows. The agent writes its own answer, and a code Critic (`critic.py`, not a second model call) checks every number against the rows and cited text.
 
 Three principles run through it:
 
-1. **SQL computes the numbers; the model never does arithmetic.** The Narrator has no database tool, so it *cannot* re-query to make data fit its narrative. Tool permissions are the constraint; prompt instructions are only a request.
-2. **The semantic layer owns metric definitions.** Enforced by database grants, not by prompt wording.
-3. **Every layer assumes the one above it has a bug.**
+1. **SQL computes the numbers; the model never does arithmetic.** Ratios and sums go in SQL. Where a model does write numbers, a code check compares them with the data.
+2. **The semantic layer owns metric definitions.** Enforced by database grants and the sqlguard allowlist, not by prompt wording. Conventions live in shared places (metric dictionary, generated catalog, tool descriptions) so every engine gets them.
+3. **Every layer assumes the one above it has a bug.** Each constraint only works in the layer it lives in. A prompt rule is a request; a tool list or a database grant is a constraint.
+
+See [docs/01-architecture.md](docs/01-architecture.md) for the defence table, known gaps and the evaluation setup.
 
 ---
 
