@@ -37,4 +37,6 @@
 
 ## 当前进度
 
-W0 ✅ 环境与数据底座 | W1 ⬜ | W2 ⬜ | W3 ⬜ | W4 ⬜ | W5 ⬜ | W6 ⬜
+W0–W4 ✅（两引擎、RAG、MCP、Critic、评测）| 原 W5/W6 已被阶段二替代
+
+阶段二（引擎层，见 `docs/10-flagship-plan.md`）：W1 ⬜ 领域包 + DuckDB | W2 ⬜ Snowflake | W3 ⬜ NZ 领域包 + 评估集 | W4 ⬜ 部署 + 演示

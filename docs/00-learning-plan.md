@@ -68,6 +68,12 @@ W1 单次调用                W2 取数                  W3 取知识
 
 最后那份报告是最值钱的。企业买的不是"能问数"，是"敢不敢信它"。
 
+## 阶段二（2026-10-26 起）
+
+W1–W4 完成后方向调整：ChemQ 升级为 NZ 电力市场智能分析 Agent 的**引擎层**，
+nz-power-pipeline 作为数据底座。原 W5（AWS 部署 + .NET 网关）和 W6（评测与报告）被替代，
+排期、三项接口和约束见 [`10-flagship-plan.md`](10-flagship-plan.md)。
+
 ## 之后（可选）
 
 - AWS Certified AI Practitioner 备考 —— W5/W6 的内容覆盖大半
