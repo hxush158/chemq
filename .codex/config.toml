@@ -1,0 +1,10 @@
+[mcp_servers.chemq]
+command = "uv"
+args = [
+    "run",
+    "--directory",
+    "/Users/henryxu/Projects/ai-learning/chemq-scaffold/ai",
+    "python",
+    "-m",
+    "chemq.mcp_server",
+]

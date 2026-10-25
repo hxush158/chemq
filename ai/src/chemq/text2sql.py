@@ -163,7 +163,7 @@ def generate_and_run(
     if candidate.refuse_reason:
         raise Unanswerable(candidate.refuse_reason, kind="model_refused", cost_usd=cost)
 
-    verdict = check(candidate.sql, settings().allowed_relations, settings().max_rows)
+    verdict = check(candidate.sql, domain().allowed_relations, settings().max_rows)
     # ok=True 时 rewritten_sql 一定非 None，但这是 sqlguard 的"约定"，不是类型系统能看见的事实。
     if not verdict.ok or verdict.rewritten_sql is None:
         raise Unanswerable(

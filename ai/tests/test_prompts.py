@@ -19,8 +19,8 @@ def _all_template_texts() -> dict[str, str]:
 
 
 def test_every_slot_in_templates_has_a_value():
-    """模板里每个 {{空位}}，要么领域包给了值，要么是方言表里的键。"""
-    known = set(domain().config.get("prompt_slots") or {}) | DIALECT_KEYS
+    """模板里每个 {{空位}}，要么领域包给了值，要么是方言表里的键，要么是调用方现填的。"""
+    known = set(domain().config.get("prompt_slots") or {}) | DIALECT_KEYS | prompts.RUNTIME_SLOTS
     for where, text in _all_template_texts().items():
         assert prompts.slot_names(text) <= known, (where, prompts.slot_names(text) - known)
 

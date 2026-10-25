@@ -11,6 +11,7 @@ import structlog
 
 from chemq.config import settings
 from chemq.db import run_query
+from chemq.domain import domain
 from chemq.llm import Llm
 from chemq.router import load_metric_dictionary
 from chemq.schemas import QueryPlan, SqlCandidate
@@ -41,7 +42,7 @@ def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, l
         candidate: SqlCandidate = llm.parse(
             model=settings().model_sql, system=system, user=user, schema=SqlCandidate
         ).parsed
-        verdict = check(candidate.sql, settings().allowed_relations, settings().max_rows)
+        verdict = check(candidate.sql, domain().allowed_relations, settings().max_rows)
 
         if verdict.ok and verdict.rewritten_sql is not None:
             sql = verdict.rewritten_sql          # 收窄成 str，见 sqlguard.py 顶部的 SqlNode 注释

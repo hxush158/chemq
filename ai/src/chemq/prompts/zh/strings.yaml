@@ -14,3 +14,18 @@ tool_run_sql: |-
   4. 只返回问题要的列；比例、均值按「先 sum 再相除」在 SQL 里算好。
 tool_search: 检索{{kb_search_scope}}。found=false 表示知识库里没有相关资料。
 mcp_instructions: '{{data_name}}的只读查询工具。写 SQL 之前先调 list_metrics 看指标口径和语义层目录；数字只能来自 run_semantic_query 的结果；制度、口径解释用 search_knowledge，found=false 时如实说知识库里没有。'
+
+# ---- 语义层目录（scripts/build_catalog.py 生成 semantic_catalog.md 用）----
+catalog_title: '# 语义层目录'
+catalog_coverage: 数据覆盖：{{start}} ~ {{end}}（日粒度）。
+catalog_scope_note: 只能查下面列出的视图和维度表（schema 为 {{schema}}）。没有列出的表和列都不存在，不要猜。
+catalog_views: '## 视图'
+catalog_dims: '## 维度表'
+catalog_columns: 列：
+catalog_column: '{{name}}（{{type}}）'
+catalog_column_sep: ，
+catalog_values: '## 维度取值'
+catalog_values_note: 按名称过滤时只能用这里的原值（一字不差），或者用对应的 ID；不要缩写、不要用 LIKE 模糊匹配。
+
+# ---- 提示词里的"数据覆盖"（router.data_range()）----
+data_range: '{{start}} 至 {{end}}'

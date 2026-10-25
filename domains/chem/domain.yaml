@@ -1,8 +1,31 @@
 # 化工领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
-# catalog / scope / eval 等在第 2b、3 步加进来。
+# scope / eval 在第 3 步加进来。
 id: chem
 locale: zh
 display_name: 示例化工
+
+# 语义层所在的 schema。sqlguard 的白名单、没写 schema 的表、search_path 都用它。
+schema: chem
+
+# 语义层目录（scripts/build_catalog.py 生成 semantic_catalog.md）。
+# 白名单 = schema + views + dims：模型能查的就是目录里列出的这些，两边不会对不上。
+catalog:
+  views: [v_plant_daily, v_energy_daily, v_sales_daily, v_monthly_summary]
+  dims: [dim_date, dim_plant, dim_product, dim_customer, dim_energy_type]
+  # 数据覆盖区间从这一列的 min / max 算，写进 coverage.yaml
+  date_column: {relation: v_plant_daily, column: date_key}
+  # 维度取值：按名称过滤时模型只能用这里的原值
+  values:
+    - title: 装置（plant_id / plant_name）
+      sql: SELECT plant_id, plant_name, plant_type FROM dim_plant ORDER BY 1
+    - title: 产品（product_id / product_name）
+      sql: SELECT product_id, product_name, product_grade FROM dim_product ORDER BY 1
+    - title: 大区（region）
+      sql: SELECT DISTINCT region FROM v_sales_daily ORDER BY 1
+    - title: 客户（customer_id / customer_name）
+      sql: SELECT customer_id, customer_name, region FROM dim_customer ORDER BY 1
+    - title: 能源（energy_id / energy_name）
+      sql: SELECT energy_id, energy_name, uom FROM dim_energy_type ORDER BY 1
 
 # 填进通用提示词模板（ai/src/chemq/prompts/<locale>/）的空位 {{name}}。
 # 几个看起来重复的（kb_question_scope / kb_contents / kb_search_scope）是因为原来的提示词里

@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 from .config import settings
 from .dialects import profile
+from .domain import domain
 from .prompts import string
 
 # 工具说明只写这一份，MCP server 和 Agent SDK 都用它。
@@ -58,7 +59,7 @@ def run_semantic_query(
     from .sqlguard import check  # noqa: PLC0415
 
     s = settings()
-    verdict = check(sql, s.allowed_relations, s.max_rows)
+    verdict = check(sql, domain().allowed_relations, s.max_rows)
     if not verdict.ok or verdict.rewritten_sql is None:
         return {"ok": False, "stage": "guard", "violations": verdict.violations,
                 "hint": "只能 SELECT 语义层目录里的视图和维度表；先调 list_metrics 看目录"}

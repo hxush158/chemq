@@ -20,6 +20,7 @@ from functools import lru_cache
 from typing import Any, Iterator, Protocol
 
 from .config import settings
+from .domain import domain
 
 
 class Engine(Protocol):
@@ -50,7 +51,7 @@ class PostgresEngine:
             conn.read_only = True
             with conn.cursor() as cur:
                 cur.execute(f"SET statement_timeout = {int(s.statement_timeout_ms)}")
-                cur.execute("SET search_path = chem, public")
+                cur.execute(f"SET search_path = {domain().schema}, public")   # schema 已校验过是标识符
                 if region:
                     cur.execute("SELECT set_config('chemq.region', %s, false)", (region,))
                 yield cur
@@ -72,7 +73,7 @@ class PostgresEngine:
 
         with psycopg.connect(settings().pg_dsn, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
-                cur.execute("SET search_path = chem, public")
+                cur.execute(f"SET search_path = {domain().schema}, public")   # schema 已校验过是标识符
                 yield cur
             conn.commit()
 
@@ -90,7 +91,7 @@ class DorisEngine:
 
       3. search_path 没有对应物。Doris 没有 schema 这一层，是 <database>.<table>。
          但只要把 Doris 侧的 database 也起名叫 `chem`，
-         config.allowed_relations 那 9 条白名单一个字都不用改 ——
+         领域包的白名单（domain().allowed_relations）一个字都不用改 ——
          sqlguard._qualified() 取的是 table.text("db")，两边输出一致。
 
       4. region：**这里是真正的设计改动，不是翻译。**

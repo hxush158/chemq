@@ -7,7 +7,7 @@ SHELL := /bin/bash
 DSN        ?= postgresql://postgres:chemq@localhost:5432/chemq
 DSN_RO     ?= postgresql://chemq_ro_login:chemq@localhost:5432/chemq
 PSQL       ?= docker compose exec -T db psql
-# 领域包：domains/$(DOMAIN)/。只给不走 uv 项目环境的脚本（造数、标准答案、语义层目录）用；
+# 领域包：domains/$(DOMAIN)/。传给造数、标准答案、语义层目录这几个脚本；
 # Python 服务本身读 .env 里的 CHEMQ_DOMAIN（默认 chem）。两边要一致。
 DOMAIN     ?= chem
 DOMAIN_DIR := domains/$(DOMAIN)
@@ -16,7 +16,7 @@ DOMAIN_DIR := domains/$(DOMAIN)
 SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
-.PHONY: help doctor doctor-w1 up down logs seed golden catalog reset psql sql \
+.PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
         install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint gateway clean
 
 help:            ## 显示所有命令
@@ -72,14 +72,17 @@ seed:            ## 重建数据 + 重算评测集标准答案（改了 domains/
 		-f $(SQLDIR)/03_semantic_views.sql \
 		-f $(SQLDIR)/04_roles.sql
 	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) scripts/build_catalog.py
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" uv run --project ai --quiet python scripts/build_catalog.py
 	@echo "✓ 数据、评测集标准答案、语义层目录已重建（知识库被清空了，记得 make ingest）"
+
+cases:           ## 列出评测题（一题一行）  用法: make cases  或  make cases SET=holdout
+	@CHEMQ_DOMAIN="$(DOMAIN)" $(PY) ai/evals/list_cases.py "$(SET)"
 
 golden:          ## 只重算评测集标准答案（领域包 eval/ 下的 golden + holdout），不动数据库数据
 	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
 
-catalog:         ## 只重新生成语义层目录 domains/chem/semantic_catalog.md（text2sql 提示用）
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) scripts/build_catalog.py
+catalog:         ## 只重新生成语义层目录 + 数据覆盖区间（domains/<领域>/semantic_catalog.md、coverage.yaml）
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" uv run --project ai --quiet python scripts/build_catalog.py
 
 reset:           ## 连 volume 一起删掉重来（数据全没，慎用）
 	docker compose down -v

@@ -26,6 +26,13 @@ from ..domain import domain
 yaml = importlib.import_module("yaml")
 
 PROMPTS_DIR = Path(__file__).resolve().parent
+# 调用方每次现填的空位（不来自领域包，也不来自方言表）。列在这里，测试才能分清"漏了值"和"本来就是现填的"。
+RUNTIME_SLOTS = frozenset({
+    "start", "end",        # 数据覆盖区间（router.data_range、语义层目录）
+    "schema",              # 语义层目录：schema 名
+    "name", "type",        # 语义层目录：列名、列类型
+})
+
 _SLOT = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 
 

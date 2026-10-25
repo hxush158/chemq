@@ -1,0 +1,4 @@
+# 自动生成：scripts/build_catalog.py（make catalog / make seed）。不要手改。
+# 数据覆盖区间。Router / Agent 的提示词用它（router.data_range()）。
+start: '2025-10-01'
+end: '2026-09-30'

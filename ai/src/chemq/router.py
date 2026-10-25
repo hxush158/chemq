@@ -48,13 +48,16 @@ FEW_SHOT_EXAMPLES = few_shot_examples()
 
 
 def data_range() -> str:
-    """从造数配置读数据覆盖区间，不要在 prompt 里写死 —— 换数据就会忘记改。
+    """数据覆盖区间，不要在 prompt 里写死 —— 换数据就会忘记改。
 
-    ⚠ W1 第 1 步只搬了家，这里仍是化工专用（读 data/seed.yaml）。第 2 步改成从库里查覆盖区间。
+    读领域包的 coverage.yaml：make catalog 从数据库里查出来写的（和语义层目录同一次生成）。
+    不在这里现查数据库：Router 是第一步，不该因为数据库慢或连不上就整个问答起不来。
     """
-    cfg = yaml.safe_load((domain().data_dir / "seed.yaml").read_text(encoding="utf-8"))
-    d = cfg["scenarios"]["date_range"]
-    return f"{d['start']} 至 {d['end']}"
+    path = domain().coverage_path
+    if not path.exists():
+        raise FileNotFoundError(f"缺少 {path}。先跑 make catalog（需要数据库已 make seed）")
+    cov = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return string("data_range", extra={"start": cov["start"], "end": cov["end"]})
 
 
 def load_metric_dictionary() -> str:

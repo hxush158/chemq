@@ -64,12 +64,7 @@ class Settings(BaseSettings):
     max_rows: int = 500
 
     # --- 护栏 ---
-    allowed_relations: tuple[str, ...] = (
-        "chem.v_plant_daily", "chem.v_energy_daily",
-        "chem.v_sales_daily", "chem.v_monthly_summary",
-        "chem.dim_date", "chem.dim_plant", "chem.dim_product",
-        "chem.dim_customer", "chem.dim_energy_type",
-    )
+    # 白名单（能查哪些视图 / 维度表）在领域包里：domain().allowed_relations
 
     # --- AWS ---
     aws_region: str = "ap-southeast-2"        # Sydney：离 Auckland 最近

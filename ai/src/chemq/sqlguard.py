@@ -13,6 +13,7 @@ import sqlglot
 from sqlglot import exp
 
 from .config import settings
+from .domain import domain
 from .schemas import GuardVerdict
 
 # sqlglot 30 把 expressions.py 拆成了 expressions/ 包。包的 __init__.py 里，
@@ -59,7 +60,7 @@ SENSITIVE_TOKENS = SENSITIVE_TOKENS_BY_DIALECT["postgres"]
 
 
 def _qualified(table: exp.Table) -> str:
-    db = table.text("db") or "chem"
+    db = table.text("db") or domain().schema          # 没写 schema 的表，按领域包的 schema 算
     return f"{db}.{table.name}".lower()
 
 

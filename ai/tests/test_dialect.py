@@ -50,7 +50,7 @@ def test_structural_attacks_blocked_in_both_dialects(dialect, sql):
 
 def test_whitelist_needs_no_change_across_dialects():
     """Doris 没有 schema，只有 database。但只要 Doris 侧的 database 也叫 chem，
-    config.allowed_relations 那 9 条一个字都不用改 —— 这条就是在钉住这个设计决定。"""
+    领域包的白名单（domain().allowed_relations）一个字都不用改 —— 这条就是在钉住这个设计决定。"""
     sql = "SELECT 产量_t FROM chem.v_plant_daily"
     assert check(sql, ALLOWED, dialect="postgres").ok
     assert check(sql, ALLOWED, dialect="doris").ok
