@@ -8,7 +8,7 @@
 TODO(W3):
   1. ingest：文档 -> 分块（制度类按条款，其余按标题层级，400~800 token，overlap 80）
             -> Titan 向量化 -> 写 kb_chunk（tsv 用 textseg.doc_lexemes）
-  2. ✅ 第 5 步：用评测集标定 rag_min_cosine，加术语字面命中（kb/glossary.txt）
+  2. ✅ 第 5 步：用评测集标定 rag_min_cosine，加术语字面命中（领域包的 glossary.txt）
   3. 第 6 步：回答时用 Claude 的 search results content block 传证据，自动产出引用
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ from typing import Sequence
 
 from .config import settings
 from .db import run_query
+from .domain import domain
 from .schemas import Citation
 from .textseg import identifiers, to_tsquery_literal
 
@@ -143,12 +144,12 @@ def hybrid_search(
     return [Hit(**r) for r in run_query(HYBRID_SQL, params=params)]
 
 
-GLOSSARY_PATH = Path(__file__).resolve().parents[3] / "kb" / "glossary.txt"
+GLOSSARY_PATH = domain().glossary_path
 
 
 @lru_cache
 def load_glossary(path: Path = GLOSSARY_PATH) -> tuple[str, ...]:
-    """kb/glossary.txt：一行一个词，# 开头是注释。文件不存在就当空表（术语信号不起作用）。"""
+    """glossary.txt：一行一个词，# 开头是注释。文件不存在就当空表（术语信号不起作用）。"""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
@@ -172,7 +173,7 @@ def hit_signals(
       余弦    向量这一路最高的余弦相似度 ≥ min_cosine
       标识符  问题里有 ASCII 标识符（GB/T、P02……），某条结果正文里字面出现了它
               —— 向量最弱、BM25 最强的场景，不能因为余弦低就判无命中
-      术语    问题里有术语表（kb/glossary.txt）里的词，某条结果正文里也有它
+      术语    问题里有术语表（glossary.txt）里的词，某条结果正文里也有它
               —— 例：「利润怎么算」和"暂不支持的指标"语义不像，但字面上说的就是它
     "BM25 命中了几个中文二元组"本身不算：「怎么」「安全」这种词太容易撞上，
     所以中文只认术语表里的词。

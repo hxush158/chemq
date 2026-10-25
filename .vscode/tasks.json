@@ -50,7 +50,7 @@
       "type": "shell",
       "command": "make eval-dry",
       "problemMatcher": [],
-      "detail": "不调 API，只检查 golden.jsonl 本身"
+      "detail": "不调 API，只检查领域包的 golden.jsonl 本身"
     },
     {
       "label": "eval · 跑评测",
@@ -81,7 +81,7 @@
       "type": "shell",
       "command": "make seed",
       "problemMatcher": [],
-      "detail": "改了 naming.yaml 之后跑。首次 up 之后不用"
+      "detail": "改了 domains/chem/data/seed.yaml 之后跑。首次 up 之后不用"
     },
     {
       "label": "down · 停数据库",

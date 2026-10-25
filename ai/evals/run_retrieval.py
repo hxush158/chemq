@@ -35,7 +35,9 @@ from typing import Any, Callable, Sequence
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
-KB_GOLDEN = ROOT / "ai" / "evals" / "kb_golden.jsonl"
+from chemq.domain import domain
+
+KB_GOLDEN = domain().kb_golden_path
 CACHE = ROOT / "runs" / "kb_query_emb.json"
 MODES = ("vector", "bm25", "hybrid")
 MODE_LABEL = {"vector": "向量", "bm25": "BM25", "hybrid": "混合"}

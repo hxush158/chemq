@@ -1,13 +1,13 @@
 """提示词里的规则和示例：该有的要有，评测题原话不能出现（W2 的泄题教训）。"""
 import json
-from pathlib import Path
 
 import pytest
 
 from chemq import router
+from chemq.domain import domain
 from chemq.text2sql import system_role
 
-GOLDEN = Path(__file__).resolve().parents[1] / "evals" / "golden.jsonl"
+GOLDEN = domain().golden_path
 
 
 def _golden_questions() -> list[str]:

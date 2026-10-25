@@ -1,14 +1,13 @@
-"""切块单测 —— 只用标准库和仓库里的 kb/docs，不连数据库、不调 AWS。"""
+"""切块单测 —— 只用标准库和领域包里的 kb/docs，不连数据库、不调 AWS。"""
 import json
-from pathlib import Path
 
 import pytest
 
 from chemq.chunking import chunk_document, load_dir, parse_front_matter
+from chemq.domain import domain
 
-ROOT = Path(__file__).resolve().parents[2]
-KB = ROOT / "kb" / "docs"
-GOLDEN = ROOT / "ai" / "evals" / "kb_golden.jsonl"
+KB = domain().kb_docs_dir
+GOLDEN = domain().kb_golden_path
 
 
 @pytest.fixture(scope="module")

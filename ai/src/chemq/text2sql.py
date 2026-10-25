@@ -1,6 +1,6 @@
 """W2 交付物：QueryPlan -> SQL -> 执行结果。
 
-验收标准（evals/golden.jsonl）：
+验收标准（domains/<领域>/eval/golden.jsonl）：
   · 执行准确率(Execution Accuracy) ≥ 80%   —— 结果集与标准答案一致
   · 口径正确率 ≥ 95%                        —— 用对了字典里的指标定义
   · 被 sqlguard 拦下的 SQL 占比 < 5%        —— 拦太多说明 prompt 没写好
@@ -15,10 +15,10 @@ TODO(W2):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from .config import settings
 from .db import run_query
+from .domain import domain
 from .llm import Llm, LlmResult
 from .router import load_metric_dictionary
 from .schemas import QueryPlan, SqlCandidate
@@ -97,21 +97,21 @@ SYSTEM_ROLE = system_role("postgres")
 def schema_context(dialect: str | None = None) -> str:
     """给模型看的「语义层目录」：能查哪些视图/维度表、有哪些列、维度有哪些取值。
 
-    由 db/build_catalog.py 从数据库生成（make catalog / make seed），提交进仓库。
+    由 scripts/build_catalog.py 从数据库生成（make catalog / make seed），提交进仓库。
     以前这里直接返回 03_semantic_views.sql 原文 —— 视图定义里的 `FROM fact_sales`、
     `received_cny` 被模型学去，查明细表、用英文底层列名（W3 主评测 Q004）。
 
-    路径解析留了 W5 的口子：db/<dialect>/semantic_catalog.md 存在就用它，
-    否则回落到平铺的 db/semantic_catalog.md（只对 postgres）。
+    路径解析留了换引擎的口子：领域包里 <dialect>/semantic_catalog.md 存在就用它，
+    否则回落到平铺的 semantic_catalog.md（只对 postgres）。
     """
     dialect = dialect or settings().sql_dialect
-    root = Path(__file__).resolve().parents[3] / "db"
+    d = domain()
 
-    per_dialect = root / dialect / "semantic_catalog.md"
+    per_dialect = d.catalog_path_for(dialect)
     if per_dialect.exists():
         return per_dialect.read_text(encoding="utf-8")
 
-    flat = root / "semantic_catalog.md"
+    flat = d.catalog_path
     if dialect == "postgres":
         if flat.exists():
             return flat.read_text(encoding="utf-8")

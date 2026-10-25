@@ -3,7 +3,7 @@
 一个**以学习为目的**的 AI 应用开发训练项目，练习场景是流程工业（化工）的经营分析问数。
 6 周，每周 8–10 小时。产出两条线：你的能力，和一个可以交付/演示的系统。
 
-> 业务命名目前是占位符，见 `naming.yaml`。换成实际命名后 `make seed` 即可。
+> 业务命名目前是占位符，见 `domains/chem/data/seed.yaml`。换成实际命名后 `make seed` 即可。
 
 ## 30 分钟跑起来
 
@@ -22,18 +22,17 @@ make eval WEEK=1              # 真实评测 —— 现在会失败，因为 pip
 
 最后一条失败是**预期的**。让它变绿就是 W1 的任务。
 
-> `make seed` 首次不用跑 —— 数据已经在了。它是给"改了 `naming.yaml`"
+> `make seed` 首次不用跑 —— 数据已经在了。它是给"改了 `domains/chem/data/seed.yaml`"
 > 或"想恢复干净状态"用的。
 
 ## 目录
 
 ```
-naming.yaml         业务命名的唯一入口（占位符 → 实际命名）
-db/                 schema · 语义层视图 · 只读角色与 RLS · 数据生成器
-kb/                 指标口径字典（语义层的"人话"版本）
-ai/src/chemq/       AI 服务层（带 TODO 的 stub 就是你的作业）
+domains/chem/       领域包：指标口径字典、术语表、语义层目录、评测集、知识库文档
+domains/chem/data/  schema · 语义层视图 · 只读角色与 RLS · 数据生成器 · seed.yaml（业务命名的唯一入口）
+ai/src/chemq/       AI 服务层（领域无关的引擎；domain.py 选领域包）
 ai/solutions/       参考实现 —— 先自己写 30 分钟再翻
-ai/evals/           评测集与跑分器 ← 这是学习闭环的核心
+ai/evals/           跑分器 ← 这是学习闭环的核心
 gateway/            .NET 网关（W5）
 infra/              AWS CDK (C#)（W5）
 docs/concepts/      概念卡（面试复习册）

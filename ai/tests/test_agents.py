@@ -2,14 +2,14 @@
 工具包装、hooks、Recorder → Answer 的转换、拒答约定、外部上限。"""
 import asyncio
 import json
-from pathlib import Path
 
 import pytest
 
 from chemq import agents
 from chemq.agents import CANNOT_ANSWER, Recorder, to_answer
+from chemq.domain import domain
 
-GOLDEN = Path(__file__).resolve().parents[1] / "evals" / "golden.jsonl"
+GOLDEN = domain().golden_path
 
 
 def _rec(sql_rows=None, kb=None, tools=()):

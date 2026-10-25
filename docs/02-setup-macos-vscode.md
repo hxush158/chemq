@@ -97,7 +97,7 @@ make up
 1. 读 `docker-compose.yml`，拉 `pgvector/pgvector:pg16` 镜像（首次约 400MB，要等几分钟）
 2. 起一个叫 `chemq-db` 的容器，把容器的 5432 端口映射到你本机的 5432
 3. **首次启动**时，PostgreSQL 官方镜像会自动执行挂载进
-   `/docker-entrypoint-initdb.d/` 的所有 `.sql` 文件——也就是 `db/` 目录下的
+   `/docker-entrypoint-initdb.d/` 的所有 `.sql` 文件——也就是 `domains/chem/data/` 目录下的
    `01_schema.sql` → `02_seed.sql` → `03_semantic_views.sql` → `04_roles.sql`，
    按文件名顺序。所以建表、灌 12 个月数据、建语义层视图、建只读账号，
    这一条命令全做完了
@@ -139,14 +139,14 @@ make doctor
 
 `make seed` 是给这两种情况用的：
 
-- 你改了 `naming.yaml`（换成目标客户实际的装置/产品命名）
+- 你改了 `domains/chem/data/seed.yaml`（换成目标客户实际的装置/产品命名）
 - 你手工改坏了数据，想恢复到干净状态
 
 **它具体做了什么**：
 
 ```
-1. uv run python db/gen_seed.py > db/02_seed.sql
-      读 naming.yaml，按固定随机种子生成 12 个月合成数据的 INSERT 语句
+1. uv run python domains/chem/data/gen_seed.py > domains/chem/data/02_seed.sql
+      读 domains/chem/data/seed.yaml，按固定随机种子生成 12 个月合成数据的 INSERT 语句
       随机种子固定 = 每次生成的数据完全一样 = 评测集的标准答案才稳定
 
 2. docker compose exec -T db psql ... -f 01 -f 02 -f 03 -f 04
@@ -154,7 +154,7 @@ make doctor
       01_schema.sql 开头有 DROP SCHEMA chem CASCADE，所以是干净重建
 
 3. uv run python ai/evals/build_golden.py
-      用参考 SQL 实跑一遍数据库，把结果写进 ai/evals/golden.jsonl
+      用参考 SQL 实跑一遍数据库，把结果写进 domains/chem/eval/golden.jsonl
       这样"评测集的标准答案"永远和"数据"同步 —— 数据变了标准答案自动跟着变
 ```
 
@@ -248,7 +248,7 @@ SELECT * FROM chem.fact_sales LIMIT 10;
 make help        # 列出所有命令
 make doctor      # 出问题先跑这个
 make up / down   # 起 / 停数据库
-make seed        # 改了 naming.yaml 之后跑
+make seed        # 改了 domains/chem/data/seed.yaml 之后跑
 make psql        # 用只读账号进 psql
 make sql Q="select ..."   # 跑一条 SQL 不进交互
 make test        # 单元测试

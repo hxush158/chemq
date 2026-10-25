@@ -1,20 +1,20 @@
-"""语义层目录（db/semantic_catalog.md）—— text2sql 提示里给模型看的就是它。
+"""语义层目录（领域包的 semantic_catalog.md）—— text2sql 提示里给模型看的就是它。
 
 先 make catalog（或 make seed）生成，再跑这些测试。
 """
-from pathlib import Path
 
 import pytest
 
+from chemq.domain import domain
 from chemq.text2sql import schema_context, system_role
 
-CATALOG = Path(__file__).resolve().parents[2] / "db" / "semantic_catalog.md"
+CATALOG = domain().catalog_path
 
 
 @pytest.fixture(scope="module")
 def text():
     if not CATALOG.exists():
-        pytest.fail("db/semantic_catalog.md 不存在：先 make catalog（需要数据库已 make seed）")
+        pytest.fail(f"{CATALOG} 不存在：先 make catalog（需要数据库已 make seed）")
     return CATALOG.read_text(encoding="utf-8")
 
 

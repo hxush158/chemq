@@ -1,6 +1,6 @@
 # 语义层目录
 
-<!-- 自动生成：db/build_catalog.py（make catalog / make seed）。不要手改。 -->
+<!-- 自动生成：scripts/build_catalog.py（make catalog / make seed）。不要手改。 -->
 
 数据覆盖：2025-10-01 ~ 2026-09-30（日粒度）。
 只能查下面列出的视图和维度表（schema 为 chem）。没有列出的表和列都不存在，不要猜。

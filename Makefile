@@ -7,8 +7,12 @@ SHELL := /bin/bash
 DSN        ?= postgresql://postgres:chemq@localhost:5432/chemq
 DSN_RO     ?= postgresql://chemq_ro_login:chemq@localhost:5432/chemq
 PSQL       ?= docker compose exec -T db psql
-# SQL 文件的路径。默认是容器内的挂载点（db/ 挂到了这里）。
-# 如果你把 PSQL 改成本机 psql，把 SQLDIR 一起改成 db
+# 领域包：domains/$(DOMAIN)/。只给不走 uv 项目环境的脚本（造数、标准答案、语义层目录）用；
+# Python 服务本身读 .env 里的 CHEMQ_DOMAIN（默认 chem）。两边要一致。
+DOMAIN     ?= chem
+DOMAIN_DIR := domains/$(DOMAIN)
+# SQL 文件的路径。默认是容器内的挂载点（docker-compose.yml 把 domains/chem/data/ 挂到了这里）。
+# 如果你把 PSQL 改成本机 psql，把 SQLDIR 一起改成 $(DOMAIN_DIR)/data
 SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
@@ -52,7 +56,7 @@ doctor:          ## 完整体检（含数据库）—— W2 起用这个
 
 up:              ## 起数据库（首次会自动建表并导入数据，约 30 秒）
 	docker compose up -d --wait
-	@echo "✓ 数据库就绪。首次启动已自动执行 db/01→04，可直接 make doctor 验证"
+	@echo "✓ 数据库就绪。首次启动已自动执行 domains/chem/data/01→04，可直接 make doctor 验证"
 
 down:            ## 停数据库（数据保留在 volume 里）
 	docker compose down
@@ -60,22 +64,22 @@ down:            ## 停数据库（数据保留在 volume 里）
 logs:            ## 看数据库日志 —— 起不来时看这里
 	docker compose logs -f db
 
-seed:            ## 重建数据 + 重算评测集标准答案（改了 naming.yaml 之后跑）
-	$(PY) db/gen_seed.py > db/02_seed.sql
+seed:            ## 重建数据 + 重算评测集标准答案（改了 domains/chem/data/seed.yaml 之后跑）
+	$(PY) $(DOMAIN_DIR)/data/gen_seed.py > $(DOMAIN_DIR)/data/02_seed.sql
 	$(PSQL) "$(DSN)" -v ON_ERROR_STOP=1 -q \
 		-f $(SQLDIR)/01_schema.sql \
 		-f $(SQLDIR)/02_seed.sql \
 		-f $(SQLDIR)/03_semantic_views.sql \
 		-f $(SQLDIR)/04_roles.sql
-	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
-	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) scripts/build_catalog.py
 	@echo "✓ 数据、评测集标准答案、语义层目录已重建（知识库被清空了，记得 make ingest）"
 
-golden:          ## 只重算评测集标准答案（golden.jsonl + holdout.jsonl），不动数据库数据
-	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
+golden:          ## 只重算评测集标准答案（领域包 eval/ 下的 golden + holdout），不动数据库数据
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
 
-catalog:         ## 只重新生成语义层目录 db/semantic_catalog.md（text2sql 提示用）
-	CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) db/build_catalog.py
+catalog:         ## 只重新生成语义层目录 domains/chem/semantic_catalog.md（text2sql 提示用）
+	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) scripts/build_catalog.py
 
 reset:           ## 连 volume 一起删掉重来（数据全没，慎用）
 	docker compose down -v

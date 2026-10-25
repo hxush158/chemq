@@ -63,8 +63,8 @@
 
 - 模型只能查 `v_*` 视图，查不到 `fact_*` 明细表 —— sqlguard 白名单 + 数据库权限双重保证。
 - 折标煤系数等参数从维度表取，禁止硬编码。
-- **口径和约定放在共享层，不放在某一个提示词里**：指标字典（`kb/metric_dictionary.yaml`）、
-  从数据库自动生成的语义层目录（`db/semantic_catalog.md`，含维度取值和时间口径）、
+- **口径和约定放在共享层，不放在某一个提示词里**：指标字典（`domains/chem/metric_dictionary.yaml`）、
+  从数据库自动生成的语义层目录（`domains/chem/semantic_catalog.md`，含维度取值和时间口径）、
   工具说明（`tools.py` 里的 `DESC_*`）。
   W4 的教训：提示词不会跟着走，换一个引擎就丢了；工具说明会跟着工具走到 Agent 和 MCP 客户端。
 
@@ -115,7 +115,7 @@
 - `DorisEngine`：W5 实现，目前是桩。不只是语法翻译 ——
   超时单位不同（`query_timeout` 秒），而且 Doris 读不了会话变量，
   region 要改成"一个大区一个 role + 一个连接"。
-- 语义层目录按方言查找：`db/<dialect>/semantic_catalog.md`，找不到再用 `db/semantic_catalog.md`。
+- 语义层目录按方言查找：`domains/chem/<dialect>/semantic_catalog.md`，找不到再用 `domains/chem/semantic_catalog.md`。
 - 知识库检索（`hybrid_search`）在 Doris 方案下仍直连 Postgres（pgvector）。
 
 ## 评测体系

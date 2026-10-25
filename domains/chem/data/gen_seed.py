@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""生成合成业务数据 -> db/02_seed.sql
+"""生成合成业务数据 -> 02_seed.sql（同目录）
 
-所有业务命名来自 naming.yaml；换成目标客户实际命名后重跑本脚本即可。
+所有业务命名来自同目录的 seed.yaml；换成目标客户实际命名后重跑本脚本即可。
 随机种子固定 —— 评测集的标准答案依赖数据可复现，不要改种子。
 
-用法: python db/gen_seed.py > db/02_seed.sql
+用法: python domains/chem/data/gen_seed.py > domains/chem/data/02_seed.sql（make seed 会做）
 """
 import datetime as dt
 import random
@@ -12,8 +12,8 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-CFG = yaml.safe_load((ROOT / "naming.yaml").read_text(encoding="utf-8"))
+HERE = Path(__file__).resolve().parent
+CFG = yaml.safe_load((HERE / "seed.yaml").read_text(encoding="utf-8"))
 
 random.seed(20260914)
 

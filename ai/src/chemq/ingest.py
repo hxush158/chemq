@@ -1,4 +1,4 @@
-"""kb/docs/*.md -> kb_document + kb_chunk。
+"""domains/<领域>/kb/docs/*.md -> kb_document + kb_chunk。
 
     make ingest-dry   只切块、打印，不调 AWS、不写库
     make ingest       切块 -> Titan 向量化 -> 写库
@@ -6,7 +6,7 @@
 两条设计：
   1. **先全部向量化，再一次事务写库。** 向量化要几十次网络调用，中途凭证过期或断网，
      库里不会留下"一半新一半旧"的状态 —— 要么全换，要么不动。
-  2. **kb/docs 是唯一来源。** 每次都是整体同步：文件夹里的文档先删后插（重跑结果一样），
+  2. **领域包的 kb/docs 是唯一来源。** 每次都是整体同步：文件夹里的文档先删后插（重跑结果一样），
      文件夹里已经没有的文档也从库里删掉。
 
 知识库只存在 Postgres（pgvector）里，和取数走 Postgres 还是 Doris 无关，
@@ -22,11 +22,12 @@ from typing import Any, Sequence
 
 from .chunking import Document, load_dir
 from .config import settings
+from .domain import domain
 from .embed import Embedder, Embedding
 from .rag import vector_literal
 from .textseg import doc_lexemes
 
-DEFAULT_DIR = Path(__file__).resolve().parents[3] / "kb" / "docs"
+DEFAULT_DIR = domain().kb_docs_dir
 
 SQL_DELETE_DOC = "DELETE FROM kb_document WHERE doc_id = %(doc_id)s"   # chunk 靠 ON DELETE CASCADE
 SQL_PRUNE = "DELETE FROM kb_document WHERE NOT (doc_id = ANY(%(keep)s::text[])) RETURNING doc_id"

@@ -1,0 +1,5 @@
+# 化工领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
+# W1 第 1 步（纯搬家）只有身份字段；prompt_slots / catalog / scope / eval 等在第 2–3 步加进来。
+id: chem
+locale: zh
+display_name: 示例化工

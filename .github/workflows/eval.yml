@@ -22,9 +22,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: 建库与导数
         run: |
-          python db/gen_seed.py > db/02_seed.sql
+          D=domains/chem/data
+          python $D/gen_seed.py > $D/02_seed.sql
           psql "$CHEMQ_PG_DSN" -v ON_ERROR_STOP=1 \
-            -f db/01_schema.sql -f db/02_seed.sql -f db/03_semantic_views.sql -f db/04_roles.sql
+            -f $D/01_schema.sql -f $D/02_seed.sql -f $D/03_semantic_views.sql -f $D/04_roles.sql
           python ai/evals/build_golden.py
       - name: 单元测试（SQL 护栏）
         run: cd ai && uv sync --extra dev && uv run pytest -q

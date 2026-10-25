@@ -45,7 +45,7 @@ pgvector 在 Neon 的所有套餐（含免费）都可用，一句 `CREATE EXTEN
    ```
 
 4. `make install-db`
-5. 把 `db/01_schema.sql` … `04_roles.sql` 的内容依次贴进 Web SQL 编辑器执行
+5. 把 `domains/chem/data/01_schema.sql` … `04_roles.sql` 的内容依次贴进 Web SQL 编辑器执行
    （或用 `make seed SQLDIR=db PSQL=psql`，前提是本机有 psql）
 
 **要注意的地方**（这些本身就是 W2 的内容）：
@@ -75,7 +75,7 @@ initdb -D ~/chemq-pgdata -U postgres
 pg_ctl -D ~/chemq-pgdata -l ~/chemq-pgdata/server.log start
 
 createdb -U postgres chemq
-psql -U postgres -d chemq -f db/01_schema.sql   # 见下方注意事项
+psql -U postgres -d chemq -f domains/chem/data/01_schema.sql   # 见下方注意事项
 ```
 
 `.env` 改成：
@@ -91,7 +91,7 @@ CHEMQ_PG_DSN=postgresql://postgres@localhost:5432/chemq
 - ✅ W2 完全够用（语义层、护栏、只读角色、RLS 都不需要 pgvector）
 - ❌ W3 的向量检索跑不了 —— 到那时要么换方案 A，要么新机器已经到了
 
-W2 之前先把 `db/01_schema.sql` 里这三行注释掉：
+W2 之前先把 `domains/chem/data/01_schema.sql` 里这三行注释掉：
 
 ```sql
 -- CREATE EXTENSION IF NOT EXISTS vector;
@@ -114,9 +114,9 @@ W2 之前先把 `db/01_schema.sql` 里这三行注释掉：
 | 读 Agent SDK 官方文档 | 1h | W4 的概念课，读完再动手效率高得多 |
 | 注册 AWS + 建 $10 Budget 告警 | 20min | 浏览器操作。W5 之前必须有 |
 | 在 Console Workbench 里手动试 prompt | 1–2h | <https://platform.claude.com/workbench> 不用写代码就能试 system/few-shot/structured outputs |
-| 通读 `db/03_semantic_views.sql` | 1h | 特别是 `v_monthly_summary` 的扇出陷阱注释 |
+| 通读 `domains/chem/data/03_semantic_views.sql` | 1h | 特别是 `v_monthly_summary` 的扇出陷阱注释 |
 
-**其中第一项最值钱。** 指标口径字典（`kb/metric_dictionary.yaml`）现在写的是我编的
+**其中第一项最值钱。** 指标口径字典（`domains/chem/metric_dictionary.yaml`）现在写的是我编的
 通用化工口径。换成目标客户实际的——「产量」到底含不含返工？「综合能耗」的折标系数用哪一版？
 「回款率」和财务口径差在哪？——这份东西哪怕智能问数最后不上线，
 数据治理也用得上，而且它需要的是你的行业经验，不是编程能力。

@@ -29,10 +29,10 @@
 
 ## 项目约定
 
-- 业务命名全部来自 `naming.yaml`，代码和文档里不写死装置/产品名
-- 指标口径唯一来源是 `kb/metric_dictionary.yaml` + `db/03_semantic_views.sql`
-- 改了 `naming.yaml` 必须 `make seed`（会重建数据并重算评测集标准答案）
-- 随机种子固定在 `db/gen_seed.py`，不要改 —— 评测集的标准答案依赖它
+- 业务命名全部来自 `domains/chem/data/seed.yaml`，代码和文档里不写死装置/产品名
+- 指标口径唯一来源是 `domains/chem/metric_dictionary.yaml` + `domains/chem/data/03_semantic_views.sql`
+- 改了 `domains/chem/data/seed.yaml` 必须 `make seed`（会重建数据并重算评测集标准答案）
+- 随机种子固定在 `domains/chem/data/gen_seed.py`，不要改 —— 评测集的标准答案依赖它
 - 提交前：`make test && make eval-dry`
 
 ## 当前进度

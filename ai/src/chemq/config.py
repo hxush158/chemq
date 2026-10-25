@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # 注意：Haiku 4.5 不支持 effort；只有 Sonnet 4.6+ / Opus 4.5+ / Fable / Mythos 支持。
     effort: str = ""
 
+    # --- 领域包 ---
+    # domains/<domain>/ 下的业务内容（指标字典、术语表、评测集……）。见 chemq/domain.py
+    domain: str = "chem"
+
     # --- 数据库 ---
     # 目标引擎。换引擎只改这一个值 —— 业务代码里不该出现 if dialect == ...
     # postgres：W1-W4 的学习环境（Docker 一键重建，评测跑得快，RAG 用 pgvector）

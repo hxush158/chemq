@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
 from chemq import critic  # noqa: E402
+from chemq.domain import domain
 
 QUESTIONS = ["Q001", "Q004", "Q009", "Q011", "Q014", "Q015"]
 CACHE = ROOT / "runs" / "critic_lab_cache.json"
@@ -73,7 +74,7 @@ async def _collect() -> list[dict]:
     from chemq.agents import orchestrate  # noqa: PLC0415
 
     gold = {json.loads(x)["id"]: json.loads(x)
-            for x in (ROOT / "ai" / "evals" / "golden.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()}
+            for x in domain().golden_path.read_text(encoding="utf-8").splitlines() if x.strip()}
     out = []
     for qid in QUESTIONS:
         run = await orchestrate(gold[qid]["question"], as_of="2026-09-14")

@@ -29,8 +29,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
-GOLDEN = ROOT / "ai" / "evals" / "golden.jsonl"
-HOLDOUT = ROOT / "ai" / "evals" / "holdout.jsonl"
+from chemq.domain import domain
+
+GOLDEN = domain().golden_path
+HOLDOUT = domain().holdout_path
 TOL_PCT = 0.5   # 数值容差 0.5%：浮点和四舍五入的差异不算错
 
 # 每类断言从第几周起「到期」。没到期的不计分、不算失败，只记为 pending。

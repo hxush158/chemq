@@ -43,7 +43,7 @@ if [ -n "$REAL" ]; then
   bad "以下文件出现了真实客户名（仓库是公开的，必须处理）："
   echo "$REAL" | sed 's/^/      /'
 else
-  ok "代码和数据里没有真实客户名（naming.yaml 是占位符）"
+  ok "代码和数据里没有真实客户名（domains/chem/data/seed.yaml 是占位符）"
 fi
 
 echo

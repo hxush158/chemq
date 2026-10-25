@@ -10,7 +10,7 @@ A "ask your data" system for a chemical plant: someone types *"which sales regio
 
 ## What this repository demonstrates
 
-**A semantic layer, not raw-table access.** Metric definitions live in SQL views (`db/03_semantic_views.sql`) and a machine-readable dictionary (`kb/metric_dictionary.yaml`). The model may query the views and nothing else. "Output" means *qualified output excluding rework*; unit energy consumption is `Σ(consumption × coal-equivalent coefficient) / qualified output` with the coefficient read from a dimension table, never hard-coded. In enterprise Text-to-SQL, wrong *definitions* cost more than wrong *syntax* — and they are much harder to notice.
+**A semantic layer, not raw-table access.** Metric definitions live in SQL views (`domains/chem/data/03_semantic_views.sql`) and a machine-readable dictionary (`domains/chem/metric_dictionary.yaml`). The model may query the views and nothing else. "Output" means *qualified output excluding rework*; unit energy consumption is `Σ(consumption × coal-equivalent coefficient) / qualified output` with the coefficient read from a dimension table, never hard-coded. In enterprise Text-to-SQL, wrong *definitions* cost more than wrong *syntax* — and they are much harder to notice.
 
 **Defense in depth against LLM-generated SQL.** Three independent layers, each covering the one above it:
 
@@ -44,7 +44,7 @@ This is a learning project with a deliberate structure: the infrastructure is co
 
 ## The data
 
-Synthetic, 12 months, generated from `naming.yaml` with a fixed seed. Plant and product names are placeholders. Four phenomena are deliberately planted so the system can be tested against findings a human would recognise:
+Synthetic, 12 months, generated from `domains/chem/data/seed.yaml` with a fixed seed. Plant and product names are placeholders. Four phenomena are deliberately planted so the system can be tested against findings a human would recognise:
 
 | Planted | Detectable as |
 |---|---|
@@ -116,13 +116,12 @@ make eval WEEK=1
 ## Layout
 
 ```
-naming.yaml           single source for business naming (placeholders → real names)
-db/                   schema · semantic views · read-only role & RLS · data generator
-kb/                   metric dictionary — the semantic layer in plain language
-ai/src/chemq/         AI service layer
+domains/chem/         domain pack: metric dictionary, glossary, semantic catalog, eval sets, KB docs
+domains/chem/data/    schema · semantic views · read-only role & RLS · data generator · seed.yaml (naming)
+ai/src/chemq/         AI service layer (domain-agnostic engine; domain.py picks the pack)
 ai/solutions/         reference implementations
-ai/evals/             golden set, runner, A/B comparison
-scripts/              bootstrap, diagnostics, cache lab, git pre-flight
+ai/evals/             eval runners, A/B comparison
+scripts/              bootstrap, diagnostics, catalog builder, cache lab, git pre-flight
 docs/weekly/          the six-week curriculum
 gateway/ · infra/     .NET gateway and AWS CDK (planned)
 ```

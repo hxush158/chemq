@@ -50,7 +50,7 @@
   "files.associations": { "*.jsonl": "jsonl" },
   "search.exclude": {
     "ai/.venv": true,
-    "db/02_seed.sql": true
+    "domains/chem/data/02_seed.sql": true
   },
   "makefile.configureOnOpen": false
 }

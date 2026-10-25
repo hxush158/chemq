@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""从数据库生成「语义层目录」db/semantic_catalog.md —— text2sql 提示里给模型看的就是它。
+"""从数据库生成「语义层目录」domains/<领域>/semantic_catalog.md —— text2sql 提示里给模型看的就是它。
 
 为什么不再把 03_semantic_views.sql 原样塞进提示：
   视图定义里写着 `FROM fact_sales s`、`s.received_cny AS 回款_cny`。模型照着学，
@@ -7,7 +7,7 @@
   模型只需要知道"能查什么"，不需要知道"视图是怎么拼出来的"。
 
 为什么从数据库生成而不是手写：手写的目录迟早和真实数据对不上（schema 漂移）；
-naming.yaml 改了名字，重跑 make seed 目录就跟着变。
+造数配置（data/seed.yaml）改了名字，重跑 make seed 目录就跟着变。
 生成结果提交进仓库：提示内容固定、可以审 diff、测试不用连数据库。
 
 用法: make catalog（make seed 最后也会自动跑）
@@ -18,7 +18,9 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "db" / "semantic_catalog.md"
+# 同 ai/evals/build_golden.py：裸 python 跑，import 不到 chemq.domain，按约定自己算路径。
+# ⚠ W1 第 1 步只搬家：下面的 VIEWS / DIMS / VALUES 仍是化工专用，第 2 步搬进 domain.yaml。
+OUT = ROOT / "domains" / os.environ.get("CHEMQ_DOMAIN", "chem") / "semantic_catalog.md"
 
 DSN = os.environ.get("CHEMQ_PG_DSN", "postgresql://postgres:chemq@localhost:5432/chemq")
 PSQL = shlex.split(os.environ.get("CHEMQ_PSQL", "psql"))
@@ -84,7 +86,7 @@ def build() -> str:
     out = [
         "# 语义层目录",
         "",
-        "<!-- 自动生成：db/build_catalog.py（make catalog / make seed）。不要手改。 -->",
+        "<!-- 自动生成：scripts/build_catalog.py（make catalog / make seed）。不要手改。 -->",
         "",
         f"数据覆盖：{lo} ~ {hi}（日粒度）。",
         "只能查下面列出的视图和维度表（schema 为 chem）。没有列出的表和列都不存在，不要猜。",

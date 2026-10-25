@@ -1,12 +1,12 @@
 """第 6 步：带引用的回答。全部用假的检索 / 假的 Claude，不连数据库、不调 API。"""
 import json
-from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
 
 from chemq import kb_answer as ka
 from chemq import pipeline
+from chemq.domain import domain
 from chemq.rag import Hit
 from chemq.schemas import QueryPlan
 
@@ -119,7 +119,7 @@ def test_grounded_answer_passes():
 
 def test_system_prompt_does_not_leak_near_miss_questions():
     """W2 的教训：举例里出现评测题原话，分数就是虚的。"""
-    golden = Path(__file__).resolve().parents[1] / "evals" / "kb_golden.jsonl"
+    golden = domain().kb_golden_path
     near = [json.loads(x) for x in golden.read_text(encoding="utf-8").splitlines() if x.strip()]
     near = [g for g in near if g["kind"] == "near_miss"]
     assert near

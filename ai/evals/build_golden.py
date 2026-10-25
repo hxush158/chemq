@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""用参考 SQL 跑一遍数据库，把标准答案写进 golden.jsonl。
+"""用参考 SQL 跑一遍数据库，把标准答案写进领域包的 eval/golden.jsonl 和 eval/holdout.jsonl。
 
-为什么不手写标准答案：手写会错，而且换了 naming.yaml 重新生成数据后就全失效。
+为什么不手写标准答案：手写会错，而且改了造数配置（data/seed.yaml）重新生成数据后就全失效。
 这个脚本让"评测集"和"数据"永远同步 —— 数据变了，重跑一次就行。
 
 用法: python ai/evals/build_golden.py           # 需要数据库已 seed
@@ -13,7 +13,11 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "ai" / "evals" / "golden.jsonl"
+# Makefile 用 --no-project 的裸 python 跑本脚本，import 不到 chemq.domain，
+# 所以按同一个约定自己算：domains/<CHEMQ_DOMAIN>/eval/。
+# ⚠ W1 第 1 步只搬家：下面的 CASES 仍是化工题，CHEMQ_DOMAIN 只能是 chem。题目搬进 eval/cases.yaml 之后才真正通用。
+EVAL_DIR = ROOT / "domains" / os.environ.get("CHEMQ_DOMAIN", "chem") / "eval"
+OUT = EVAL_DIR / "golden.jsonl"
 
 # week: 这道题从第几周开始纳入评测（学习是渐进的，别一上来就拿 60 题打击自己）
 CASES = [
@@ -93,7 +97,7 @@ CASES = [
 # ---------- W4 新题验证集（holdout）----------
 # 规则：这批题跑出结果后，**不能再拿它们来调规则** —— 否则它们就变成"见过的题"，验证就失效了。
 # 主评测集的 20 题在 W2–W4 里被反复用来调规则，分数会偏乐观；这批题用来检验规则是不是真的学会了。
-HOLDOUT = ROOT / "ai" / "evals" / "holdout.jsonl"
+HOLDOUT = EVAL_DIR / "holdout.jsonl"
 HOLDOUT_CASES = [
     dict(id="H01", week=3, difficulty="easy", intent="metric_query", metrics=["负荷率"],
          question="2026年6月甲醇装置的平均负荷率是多少？",

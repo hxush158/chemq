@@ -1,28 +1,25 @@
 """W1 交付物：意图路由（NL -> QueryPlan）。
 
-验收标准（见 evals/golden.jsonl 的 intent 字段）：
+验收标准（见 domains/<领域>/eval/golden.jsonl 的 intent 字段）：
   · 意图分类准确率 ≥ 90%
   · 单次调用成本 < $0.002，P95 延迟 < 1.5s（用 haiku）
   · 缓存命中时 cache_read_tokens > 0（证明 prompt caching 生效）
 
 TODO(W1):
-  1. 读 kb/metric_dictionary.yaml，渲染成 system 前缀
+  1. 读领域包的 metric_dictionary.yaml，渲染成 system 前缀
   2. 用 Llm.parse(schema=QueryPlan) 拿结构化结果
   3. 写 5 条 few-shot（含 1 条该拒答的），放在 system 里而不是 user 里 —— 才能进缓存
 """
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 
 yaml = importlib.import_module("yaml")
 
 from .config import settings
+from .domain import domain
 from .llm import Llm, LlmResult
 from .schemas import QueryPlan
-
-ROOT = Path(__file__).resolve().parents[3]
-KB_DIR = ROOT / "kb"
 
 SYSTEM_ROLE = """你是示例化工经营分析系统的问题解析器。
 你的唯一职责是把用户的中文问题解析成结构化查询计划，不要回答问题本身、不要写 SQL。
@@ -122,14 +119,17 @@ FEW_SHOT_EXAMPLES = """
 """
 
 def data_range() -> str:
-    """从 naming.yaml 读数据覆盖区间，不要在 prompt 里写死 —— 换数据就会忘记改。"""
-    cfg = yaml.safe_load((ROOT / "naming.yaml").read_text(encoding="utf-8"))
+    """从造数配置读数据覆盖区间，不要在 prompt 里写死 —— 换数据就会忘记改。
+
+    ⚠ W1 第 1 步只搬了家，这里仍是化工专用（读 data/seed.yaml）。第 2 步改成从库里查覆盖区间。
+    """
+    cfg = yaml.safe_load((domain().data_dir / "seed.yaml").read_text(encoding="utf-8"))
     d = cfg["scenarios"]["date_range"]
     return f"{d['start']} 至 {d['end']}"
 
 
 def load_metric_dictionary() -> str:
-    raw = (KB_DIR / "metric_dictionary.yaml").read_text(encoding="utf-8")
+    raw = domain().metric_dictionary_path.read_text(encoding="utf-8")
     yaml.safe_load(raw)  # 启动即校验，坏字典不要等到线上才炸
     return raw
 

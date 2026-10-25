@@ -1,6 +1,6 @@
 # RAG 设计说明（W3）
 
-> 这个文件之前被 `db/01_schema.sql` 和 `rag.py` 引用了两次，但一直没写。
+> 这个文件之前被 `domains/chem/data/01_schema.sql` 和 `rag.py` 引用了两次，但一直没写。
 
 ## 1. Embedding 选型：Amazon Bedrock Titan Text Embeddings V2
 
@@ -61,11 +61,11 @@ RRF 分数是名次，不是相关度。向量检索永远返回最近的 N 条�
 ## 5. 权限
 
 检索走只读账号 `chemq_ro`，需要 `GRANT SELECT ON kb_document, kb_chunk TO chemq_ro`
-（在 `db/03_semantic_views.sql`）。写入（ingest）走 `chemq_app`。
+（在 `domains/chem/data/03_semantic_views.sql`）。写入（ingest）走 `chemq_app`。
 
 ## 6. 知识文档与检索评测集
 
-知识文档在 `kb/docs/*.md`，文件开头的 front matter 对应 `kb_document` 的字段：
+知识文档在 `domains/chem/kb/docs/*.md`，文件开头的 front matter 对应 `kb_document` 的字段：
 
 | doc_id | 文档 | 类型 | 切块方式 |
 |---|---|---|---|
@@ -78,7 +78,7 @@ RRF 分数是名次，不是相关度。向量检索永远返回最近的 N 条�
 不要为了凑长度把两个条款拼在一起。每个 chunk 写入时要在正文前加上「《文档标题》› 章 › 条」，
 否则单独看"检修期间合格产量为零……"这一段，模型不知道说的是哪份制度。
 
-检索评测集 `ai/evals/kb_golden.jsonl`，每题标注应该命中的 `(doc_id, section)`：
+检索评测集 `domains/chem/eval/kb_golden.jsonl`，每题标注应该命中的 `(doc_id, section)`：
 
 - `identifier`（4 题）：含 GB/T 2589、0.1229、P05、P02 —— 测 BM25 那一路
 - `fuzzy`（8 题）：和原文几乎没有共同词，如"氨厂开工不足" —— 测向量那一路
@@ -100,7 +100,7 @@ make ingest               # 切块 -> Titan 向量化 -> 写库
 
 - **先全部向量化，再一次事务写库。** 向量化是几十次网络调用，中途凭证过期或断网，
   库里不会出现"一半新一半旧"。
-- **`kb/docs` 是唯一来源。** 每次整体同步：先删后插，文件夹里没有的文档也从库里删掉，
+- **`domains/chem/kb/docs` 是唯一来源。** 每次整体同步：先删后插，文件夹里没有的文档也从库里删掉，
   重跑结果一样。所以 `chemq_app` 对两张 kb 表多给了 DELETE（业务表不给）。
 
 `make seed` 会重建 schema、清空知识库，seed 之后要重跑 `make ingest`。
@@ -150,7 +150,7 @@ make eval-rag      # 需先 make ingest；问题向量缓存在 runs/kb_query_em
 |---|---|---|
 | 余弦 | 向量这一路最高余弦 ≥ `rag_min_cosine` | 大多数题 |
 | 标识符 | 问题里的 GB/T、P02 在结果正文里字面出现 | 向量最弱的题 |
-| 术语 | 问题里的术语（`kb/glossary.txt`）在结果正文里字面出现 | K13「利润怎么算」这类：语义不像，字面就是它 |
+| 术语 | 问题里的术语（`domains/chem/glossary.txt`）在结果正文里字面出现 | K13「利润怎么算」这类：语义不像，字面就是它 |
 
 中文只认术语表里的词，「怎么」「安全」「审批」这种到处撞得上的不算 ——
 否则"帮我写辞职信"也会被判成找到了。
