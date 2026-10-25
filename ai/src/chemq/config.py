@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # --- 数据库 ---
     # 目标引擎。换引擎只改这一个值 —— 业务代码里不该出现 if dialect == ...
     # postgres：W1-W4 的学习环境（Docker 一键重建，评测跑得快，RAG 用 pgvector）
-    # doris   ：W5 接入，曙光那边的真实引擎（MySQL 协议，OLAP MPP）
+    # doris   ：W5 接入，客户侧的真实引擎（MySQL 协议，OLAP MPP）
     sql_dialect: Literal["postgres", "doris"] = "postgres"
 
     pg_dsn: str = "postgresql://chemq_app:chemq@localhost:5432/chemq"

@@ -36,9 +36,11 @@ else ok "没有大文件"; fi
 
 echo "── 4. 业务信息检查 ──"
 # 仓库要是公开的，别把客户真实信息推上去
-REAL=$(echo "$FILES" | xargs grep -lE '曙光化工|安庆' 2>/dev/null | grep -v '^docs/' || true)
+# 只拦"曙光化工"会漏掉"接曙光""曙光那边"这类写法（W4 之后真实发生过）—— 拦单独的"曙光"两个字。
+# docs/ 也是公开的，不再排除；只排除本脚本自己（它里面写着这些词）。
+REAL=$(echo "$FILES" | xargs grep -lE '曙光|安庆|Shuguang|Anqing' 2>/dev/null | grep -v '^scripts/preflight-git.sh$' || true)
 if [ -n "$REAL" ]; then
-  warn "以下文件出现了真实客户名（仓库公开的话要处理）："
+  bad "以下文件出现了真实客户名（仓库是公开的，必须处理）："
   echo "$REAL" | sed 's/^/      /'
 else
   ok "代码和数据里没有真实客户名（naming.yaml 是占位符）"
