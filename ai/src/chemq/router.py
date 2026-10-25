@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import importlib
 
-yaml = importlib.import_module("yaml")
-
 from .config import settings
 from .domain import domain
 from .llm import Llm, LlmResult
 from .schemas import QueryPlan
+
+yaml = importlib.import_module("yaml")
 
 SYSTEM_ROLE = """你是示例化工经营分析系统的问题解析器。
 你的唯一职责是把用户的中文问题解析成结构化查询计划，不要回答问题本身、不要写 SQL。

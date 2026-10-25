@@ -4,6 +4,7 @@
     client.messages.parse(..., output_format=QueryPlan)
 """
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 Intent = Literal["metric_query", "knowledge_lookup", "mixed", "chitchat", "out_of_scope"]

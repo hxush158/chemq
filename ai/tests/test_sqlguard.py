@@ -1,4 +1,5 @@
 import pytest
+
 from chemq.sqlguard import check
 
 ALLOWED = ("chem.v_plant_daily", "chem.v_sales_daily", "chem.dim_plant")

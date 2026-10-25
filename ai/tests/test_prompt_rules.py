@@ -41,6 +41,7 @@ def test_rule16_keeps_the_named_comparison_period():
 def test_energy_cost_and_sales_volume_are_supported_metrics():
     """W4 新题验证：「能源成本」带"成本"两个字被一律拒答、「销量」不在字典里被 text2sql 拒答。"""
     import yaml
+
     from chemq.router import load_metric_dictionary
 
     d = yaml.safe_load(load_metric_dictionary())

@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
-from chemq.domain import domain
+from chemq.domain import domain  # noqa: E402  —— 要先改 sys.path 才能 import
 
 GOLDEN = domain().golden_path
 HOLDOUT = domain().holdout_path

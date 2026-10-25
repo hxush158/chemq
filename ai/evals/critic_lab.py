@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
 from chemq import critic  # noqa: E402
-from chemq.domain import domain
+from chemq.domain import domain  # noqa: E402  —— 要先改 sys.path 才能 import
 
 QUESTIONS = ["Q001", "Q004", "Q009", "Q011", "Q014", "Q015"]
 CACHE = ROOT / "runs" / "critic_lab_cache.json"

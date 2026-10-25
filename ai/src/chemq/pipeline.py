@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import uuid
 
-from .schemas import Answer
-from .router import plan  # 需要引入写好的 plan 函数
-from .text2sql import Unanswerable, generate_and_run
 from .kb_answer import answer_from_kb
+from .router import plan  # 需要引入写好的 plan 函数
+from .schemas import Answer
+from .text2sql import Unanswerable, generate_and_run
+
 
 def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
     """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。"""

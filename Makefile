@@ -165,7 +165,7 @@ runs:            ## 连跑 N 次并存档  用法: make runs G=after N=3
 	@$(MAKE) --no-print-directory agg G=$${G:-after}
 
 lint:
-	cd ai && uv run ruff check src evals solutions
+	cd ai && uv run ruff check src evals solutions tests
 
 gateway:         ## 起 .NET 网关（W5）
 	cd gateway/ChemQ.Gateway && dotnet run

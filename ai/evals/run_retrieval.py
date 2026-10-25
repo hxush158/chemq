@@ -35,7 +35,7 @@ from typing import Any, Callable, Sequence
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
-from chemq.domain import domain
+from chemq.domain import domain  # noqa: E402  —— 要先改 sys.path 才能 import
 
 KB_GOLDEN = domain().kb_golden_path
 CACHE = ROOT / "runs" / "kb_query_emb.json"
@@ -257,9 +257,9 @@ def print_report(results: list[QResult], summary: dict[str, Any]) -> None:
 
 
 def run(k: int = K) -> tuple[list[QResult], dict[str, Any]]:
+    from chemq.config import settings  # noqa: PLC0415
     from chemq.db import run_query  # noqa: PLC0415
     from chemq.embed import TitanEmbedder  # noqa: PLC0415
-    from chemq.config import settings  # noqa: PLC0415
     from chemq.rag import hit_signals, hybrid_search, is_no_hit  # noqa: PLC0415
 
     golden = [json.loads(x) for x in KB_GOLDEN.read_text(encoding="utf-8").splitlines() if x.strip()]
