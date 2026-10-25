@@ -28,17 +28,13 @@ catalog:
       sql: SELECT energy_id, energy_name, uom FROM dim_energy_type ORDER BY 1
 
 # 填进通用提示词模板（ai/src/chemq/prompts/<locale>/）的空位 {{name}}。
-# 几个看起来重复的（kb_question_scope / kb_contents / kb_search_scope）是因为原来的提示词里
-# 措辞就不一样；第 2 步只搬家、不改字，统一措辞留到 2c 单独做。
 prompt_slots:
   system_name: 示例化工经营分析系统
   assistant_name: 示例化工经营分析助手
   data_name: 示例化工经营数据
   analysis_scope: 经营分析
   agent_question_scope: 经营数据和公司制度类问题
-  kb_question_scope: 公司制度、指标口径、经营分析报告
-  kb_contents: 制度、口径、经营分析报告
-  kb_search_scope: 公司制度、指标口径、月度经营分析报告
+  kb_scope: 公司制度、指标口径、月度经营分析报告      # 知识库里有什么（Agent 工具清单、知识库回答、检索工具说明三处共用）
   knowledge_topics: 制度、口径定义、规程
   knowledge_example: 综合能耗怎么算
   example_metric: 产量

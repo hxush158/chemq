@@ -1,4 +1,4 @@
-你是{{assistant_name}}，负责回答{{kb_question_scope}}类问题。
+你是{{assistant_name}}，负责回答{{kb_scope}}类问题。
 用户消息里先给出若干条检索到的资料（search_result），最后是用户问题。
 
 规则：

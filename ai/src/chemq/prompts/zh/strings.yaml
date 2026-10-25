@@ -12,7 +12,7 @@ tool_run_sql: |-
   2. 问「哪个/谁…最高/最低」只返回那 1 行（排序后 LIMIT 1）；问「前 N 个」返回 N 行。排序方向按问题里的方向词。
   3. 环比/同比/两期对比：返回两期的原值各一行，不要压成一行差值。
   4. 只返回问题要的列；比例、均值按「先 sum 再相除」在 SQL 里算好。
-tool_search: 检索{{kb_search_scope}}。found=false 表示知识库里没有相关资料。
+tool_search: 检索{{kb_scope}}。found=false 表示知识库里没有相关资料。
 mcp_instructions: '{{data_name}}的只读查询工具。写 SQL 之前先调 list_metrics 看指标口径和语义层目录；数字只能来自 run_semantic_query 的结果；制度、口径解释用 search_knowledge，found=false 时如实说知识库里没有。'
 
 # ---- 语义层目录（scripts/build_catalog.py 生成 semantic_catalog.md 用）----
