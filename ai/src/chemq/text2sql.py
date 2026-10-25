@@ -18,75 +18,23 @@ from dataclasses import dataclass
 
 from .config import settings
 from .db import run_query
+from .dialects import DIALECT_PROFILE, profile  # noqa: F401  —— DIALECT_PROFILE 是再导出
 from .domain import domain
 from .llm import Llm, LlmResult
+from .prompts import render
 from .router import load_metric_dictionary
 from .schemas import QueryPlan, SqlCandidate
 from .sqlguard import check
 
-# SYSTEM_ROLE 里只有两处是方言相关的：引擎名，和月份的格式化函数。
-# 抽成模板 + 一张方言表，而不是维护两份 prompt —— 两份 prompt 一定会漂移。
-# W2 那四条输出契约（第 6-9 条）当初选择写进 prompt 而不是写进 evals 的
-# rows_match 归一化逻辑，回报就在这里：它们现在是可按方言替换的参数，
-# 而不是评测代码里的 if dialect == ...
-_SYSTEM_ROLE_TMPL = """你是 {ENGINE} 专家，为示例化工经营分析系统生成只读 SQL。
-
-硬性约束：
-1. 只能 SELECT，且只能查「语义层目录」里列出的视图和维度表。目录里没有的表和列都不存在，
-   fact_* 明细表一律不可访问，也不要猜英文底层列名。
-2. 指标口径必须引用指标字典；字典里没有的指标一律不要造。
-3. 不要在 SQL 里硬编码折标煤系数、税率等参数，从维度表取。
-4. 同比/环比必须同时返回两期原值。
-5. 结果列名用中文，与指标字典一致，便于人工复核。
-输出约定（结果集要能直接给人看，也要能被程序比对）：
-6. 只输出问题真正要的列，不要附加没被问到的维度。
-   结果里**如果有**月份/年月列，用 {MONTH_FMT} 格式输出，不要返回 date 或 timestamp；
-   但问题没有要求按月份分组时（例如只查某一个月），不要自己加月份列，
-   也不要把它放进 GROUP BY。
-7. 问「哪个/谁…最高/最低/最多/最少」→ 排序后 LIMIT 1，只返回那一行。
-8. 问「前 N 个 / 排名前 N / 最…的 N 个」→ 排序后 LIMIT N，只返回 N 行。
-9. 排序方向由问题里的方向词决定，不要默认降序：
-     最低 / 最少 / 最小 / 最差 / 垫底  →  ORDER BY <该指标> ASC
-     最高 / 最多 / 最大 / 最好 / 领先  →  ORDER BY <该指标> DESC
-   「最低的两个」= ORDER BY ... ASC LIMIT 2，不是 DESC。
-10. 不要把整张排名表甩给用户 —— 问一个就给一行，问 N 个就给 N 行。
-11. 「最近 N 个月」以基准时间所在的月份为最后一个月，一共 N 个月
-    （基准 2026-09，最近 6 个月 = 2026-04 ~ 2026-09）。
-12. 环比/同比要返回两期的原值各一行，不要压成一行再加一个差值列。
-13. 用语义层视图答不了时（指标不存在、所需时间段没有数据），把原因写进 refuse_reason、sql 留空。
-    绝不要把拒绝写成 SELECT '…' 字面量 —— 那会被当成一条正常结果返回给用户。
-14. 按名称过滤（装置、产品、客户、大区、能源）只能用目录「维度取值」里的原值，一字不差，
-    或者改用对应的 ID 列；不要缩写或改写名称，不要用 LIKE 模糊匹配。
-15. 问「是多少 / 有多少 / 多高」这类，按问题的时间范围汇总成结果；
-    只有明确要求「按天 / 逐日 / 每天 / 列出明细」时才返回明细行。
-16. 问题里同时问了「为什么 / 什么原因 / 是不是因为」时，原因由知识库回答，不归 SQL 管：
-    SQL 只回答「是多少」那部分，不要为了解释原因额外加明细行或分组（如按装置拆开）。
-    但问题里**点名的对比期**属于「是多少」：问「X 月为什么比 Y 月高」，X、Y 两期都要返回（同规则 4、12）。
-"""
-
-DIALECT_PROFILE: dict[str, dict[str, str]] = {
-    "postgres": {
-        "ENGINE": "PostgreSQL 16",
-        "MONTH_FMT": "to_char(<日期列>, 'YYYY-MM')",
-    },
-    # ⚠️ W5 接真实 Doris 时要验证：date_format 的格式串是 MySQL 系的 %Y-%m，
-    #    to_char 在 Doris 上大概率不存在。验证前不要当成已确认的事实。
-    "doris": {
-        "ENGINE": "Apache Doris 4.0",
-        "MONTH_FMT": "date_format(<日期列>, '%Y-%m')",
-    },
-}
+# 提示词正文在 prompts/<locale>/text2sql.md。两类空位：
+#   领域相关（公司名、可过滤维度……）→ domains/<领域>/domain.yaml 的 prompt_slots
+#   方言相关（引擎名、月份写法）      → chemq/dialects.py 的 DIALECT_PROFILE
+# DIALECT_PROFILE 在这里再导出一次：tests/test_dialect.py 和 solutions/ 从 text2sql 引用它。
 
 
 def system_role(dialect: str | None = None) -> str:
     """按方言渲染 system prompt。留空则取 settings().sql_dialect。"""
-    dialect = dialect or settings().sql_dialect
-    try:
-        return _SYSTEM_ROLE_TMPL.format(**DIALECT_PROFILE[dialect])
-    except KeyError:
-        raise ValueError(
-            f"没有 {dialect!r} 的 prompt 方言配置，可选：{sorted(DIALECT_PROFILE)}"
-        ) from None
+    return render("text2sql", extra=profile(dialect or settings().sql_dialect))
 
 
 # 兼容旧引用（solutions/text2sql_w2.py 直接 import 了它）。

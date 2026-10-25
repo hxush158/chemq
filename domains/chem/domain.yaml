@@ -1,5 +1,29 @@
 # 化工领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
-# W1 第 1 步（纯搬家）只有身份字段；prompt_slots / catalog / scope / eval 等在第 2–3 步加进来。
+# catalog / scope / eval 等在第 2b、3 步加进来。
 id: chem
 locale: zh
 display_name: 示例化工
+
+# 填进通用提示词模板（ai/src/chemq/prompts/<locale>/）的空位 {{name}}。
+# 几个看起来重复的（kb_question_scope / kb_contents / kb_search_scope）是因为原来的提示词里
+# 措辞就不一样；第 2 步只搬家、不改字，统一措辞留到 2c 单独做。
+prompt_slots:
+  system_name: 示例化工经营分析系统
+  assistant_name: 示例化工经营分析助手
+  data_name: 示例化工经营数据
+  analysis_scope: 经营分析
+  agent_question_scope: 经营数据和公司制度类问题
+  kb_question_scope: 公司制度、指标口径、经营分析报告
+  kb_contents: 制度、口径、经营分析报告
+  kb_search_scope: 公司制度、指标口径、月度经营分析报告
+  knowledge_topics: 制度、口径定义、规程
+  knowledge_example: 综合能耗怎么算
+  example_metric: 产量
+  out_of_scope_examples: 生产成本、利润、人工成本
+  lookalike_note: |2-
+      ⚠ 只看指标名是否在字典里，不要看字面：「能源成本」「销量」在字典里，是支持的指标；
+        不要因为名字里带"成本"两个字就判 out_of_scope。
+  no_hardcode_examples: 折标煤系数、税率
+  filter_dimensions: 装置、产品、客户、大区、能源
+  breakdown_example: 按装置拆开
+  kb_ref_example: KB-ENE-2026#7

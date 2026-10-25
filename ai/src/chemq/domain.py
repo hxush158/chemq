@@ -4,7 +4,8 @@
 设计见 docs/11-domain-pack-design.md。
 
 目录约定（文件名固定，领域之间只有内容不同）：
-    domain.yaml              引擎要读的领域配置
+    domain.yaml              引擎要读的领域配置（含提示词空位 prompt_slots）
+    router_examples.yaml     Router 的 few-shot 示例
     metric_dictionary.yaml   指标口径字典
     glossary.txt             术语表（RAG 无命中判断用）
     semantic_catalog.md      语义层目录（生成的；<dialect>/semantic_catalog.md 可按方言覆盖）
@@ -44,6 +45,10 @@ class Domain:
     @property
     def metric_dictionary_path(self) -> Path:
         return self.root / "metric_dictionary.yaml"
+
+    @property
+    def router_examples_path(self) -> Path:
+        return self.root / "router_examples.yaml"
 
     @property
     def glossary_path(self) -> Path:

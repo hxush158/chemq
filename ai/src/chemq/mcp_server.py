@@ -17,12 +17,9 @@ import os
 from typing import Any
 
 from . import tools
+from .prompts import string
 
-INSTRUCTIONS = (
-    "示例化工经营数据的只读查询工具。写 SQL 之前先调 list_metrics 看指标口径和语义层目录；"
-    "数字只能来自 run_semantic_query 的结果；制度、口径解释用 search_knowledge，"
-    "found=false 时如实说知识库里没有。"
-)
+INSTRUCTIONS = string("mcp_instructions")     # 正文在 prompts/<locale>/strings.yaml
 
 
 def _server_class() -> Any:

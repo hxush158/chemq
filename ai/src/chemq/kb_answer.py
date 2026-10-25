@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence
 
 from .config import settings
+from .prompts import render
 from .rag import Hit, hit_signals, hybrid_search
 from .schemas import Citation
 
@@ -30,18 +31,7 @@ MAX_ROWS_IN_PROMPT = 50
 # ⚠ 规则 4 的举例故意写得很泛。W2 学到的教训：few-shot / 举例里出现评测题原话就是泄题，
 #   分数会虚高。K17–K20 擦边题的具体内容（P01 安全检查、扣奖金、4 月单耗、停止发货）不能出现在这里，
 #   tests/test_kb_answer.py 有一条测试专门盯着。
-SYSTEM_PROMPT = """你是示例化工经营分析助手，负责回答公司制度、指标口径、经营分析报告类问题。
-用户消息里先给出若干条检索到的资料（search_result），最后是用户问题。
-
-规则：
-1. 只能根据这些资料回答。资料里没写的内容，不要用常识或行业经验补充，也不要猜。
-2. 每一个结论都要引用资料。
-3. 资料说某个指标"暂不支持""没有数据源"，就如实回答暂不支持，并引用这条说明。这不算资料未覆盖。
-4. 资料和问题话题相关、但并没有回答这个问题时（问的时间段、对象或事项，资料里没有对应内容），
-   回答必须以「【资料未覆盖】」开头，再用一两句话说明资料里有什么、缺的是什么。不要拼凑或推断答案。
-5. 用户消息里如果有"数据库查询结果"，其中的数字是系统算好的：只能照抄，不许重新计算或推算新数字。
-   查询结果本身不需要引用，但对数字的解释必须引用资料。
-6. 用简体中文，简洁，直接回答，不要复述问题，不要写"根据资料"之类的开场白。"""
+SYSTEM_PROMPT = render("kb_answer")     # 正文在 prompts/<locale>/kb_answer.md
 
 
 @dataclass
