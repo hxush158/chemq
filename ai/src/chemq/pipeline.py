@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 
+from .coverage import check_time, load_coverage
 from .kb_answer import answer_from_kb
 from .router import plan  # 需要引入写好的 plan 函数
 from .schemas import Answer
@@ -50,9 +51,25 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
     # 成本从 router 那一次开始累加。之前这里只记了 router（Haiku），
     # 生成 SQL 的 Sonnet 调用一分钱都没算 —— 而那才是大头。
     cost = result.usage.cost_usd
+    caveats: list[str] = []
 
     sql, rows = None, []
     if query_plan.intent in ("metric_query", "mixed"):
+        # Router 提取时间后，由代码检查覆盖范围，再决定是否生成 SQL。
+        verdict = check_time(query_plan, load_coverage())
+        if verdict.action == "refuse":
+            return Answer(
+                trace_id=trace_id,
+                answer=verdict.reason or "查询时间不可用",
+                intent="out_of_scope",
+                refused=True,
+                cost_usd=cost,
+                caveats=["时间超出覆盖（代码判定）"],
+            )
+        if verdict.action == "clip":
+            caveats.append(f"时间范围已裁剪（代码判定）：{verdict.reason}")
+        query_plan = verdict.plan
+
         try:
             run = generate_and_run(
                 query_plan, region=region,
@@ -68,7 +85,7 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
                 refused=True,
                 sql=e.sql or None,
                 cost_usd=cost + e.cost_usd,
-                caveats=[f"text2sql 拒答（{e.kind}）"],
+                caveats=caveats + [f"text2sql 拒答（{e.kind}）"],
             )
         sql, rows = run.sql, run.rows
         cost += run.cost_usd
@@ -87,7 +104,7 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
                 citations=kb.citations,
                 numbers_from_sql=False,
                 cost_usd=cost,
-                caveats=[f"知识库拒答（{kb.kind}）"] if kb.refused else [],
+                caveats=caveats + ([f"知识库拒答（{kb.kind}）"] if kb.refused else []),
             )
 
         # mixed：数字已经有了，知识库答不上只是少了解释，不算整体拒答
@@ -101,7 +118,9 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
             citations=kb.citations if not kb.refused else [],
             numbers_from_sql=bool(rows),
             cost_usd=cost,
-            caveats=[f"数字已查到，但知识库没有给出解释（{kb.kind}）：{kb.answer}"] if kb.refused else [],
+            caveats=caveats + (
+                [f"数字已查到，但知识库没有给出解释（{kb.kind}）：{kb.answer}"] if kb.refused else []
+            ),
         )
 
     return Answer(
@@ -113,6 +132,7 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
         rows=rows,
         numbers_from_sql=bool(rows),
         cost_usd=cost,
+        caveats=caveats,
     )
 
 def new_trace_id() -> str:

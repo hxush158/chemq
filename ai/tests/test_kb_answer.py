@@ -8,7 +8,7 @@ from chemq import kb_answer as ka
 from chemq import pipeline
 from chemq.domain import domain
 from chemq.rag import Hit
-from chemq.schemas import QueryPlan
+from chemq.schemas import QueryPlan, TimeRange
 
 HITS = [
     Hit(chunk_id=11, doc_id="KB-MET-2026", title="经营指标口径说明",
@@ -132,7 +132,10 @@ def test_system_prompt_does_not_leak_near_miss_questions():
 # ---------- pipeline 分流 ----------
 
 def _plan(intent):
-    qp = QueryPlan(intent=intent, needs_knowledge=intent != "metric_query", reasoning="r")
+    qp = QueryPlan(
+        intent=intent, needs_knowledge=intent != "metric_query", reasoning="r",
+        time_range=TimeRange(start="2026-03-01", end="2026-03-31") if intent == "mixed" else None,
+    )
     return NS(parsed=qp, usage=NS(cost_usd=0.001))
 
 

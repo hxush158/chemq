@@ -37,7 +37,6 @@ prompt_slots:
   kb_scope: 公司制度、指标口径、月度经营分析报告      # 知识库里有什么（Agent 工具清单、知识库回答、检索工具说明三处共用）
   knowledge_topics: 制度、口径定义、规程
   knowledge_example: 综合能耗怎么算
-  example_metric: 产量
   out_of_scope_examples: 生产成本、利润、人工成本
   lookalike_note: |2-
       ⚠ 只看指标名是否在字典里，不要看字面：「能源成本」「销量」在字典里，是支持的指标；

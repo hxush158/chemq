@@ -4,17 +4,17 @@
 #   question 用户提问（可以多行，比如带「基准时间」）
 #   plan     期望的解析结果（原样给模型看，不要求是严格 JSON）
 - question: 1月份合成氨装置的单位产品综合能耗是多少？
-  plan: '{"intent": "metric_query", "metrics": ["单位产品综合能耗"], "reasoning": "询问特定指标的具体数值，时间明确。"}'
+  plan: '{"intent": "metric_query", "metrics": ["单位产品综合能耗"], "time_range": {"start": "2026-01-01", "end": "2026-01-31", "grain": "month"}, "reasoning": "询问特定指标的具体数值。「1月份」按基准年取 2026-01。"}'
 - question: 液氨单位产品综合能耗的计算口径是什么？包含分摊的电费吗？
   plan: '{"intent": "knowledge_lookup", "metrics": ["单位产品综合能耗"], "reasoning": "不涉及数值查询，仅询问指标的业务定义和计算规则。"}'
 - question: 上个月一次合格率是多少？为什么比前一个月低？
-  plan: '{"intent": "mixed", "metrics": ["一次合格率"], "reasoning": "既要求查询数值，又要求解释变化原因。"}'
+  plan: '{"intent": "mixed", "metrics": ["一次合格率"], "time_range": {"start": "2026-08-01", "end": "2026-08-31", "grain": "month"}, "compare_range": {"start": "2026-07-01", "end": "2026-07-31", "grain": "month"}, "reasoning": "既要求查询数值，又要求解释变化原因。上个月 = 2026-08；「比前一个月低」的对比期是 2026-07。"}'
 - note: (拒答场景：超纲/无数据)
   question: 预测一下下个月的人工成本。
   plan: '{"intent": "out_of_scope", "metrics": ["人工成本"], "reasoning": "人工成本不在当前指标字典中，且系统不支持预测类问题。"}'
 - note: (默认时间推断)
   question: 看一下开车率。
-  plan: '{"intent": "metric_query", "metrics": ["开车率"], "reasoning": "未提供时间，默认取基准月。"}'
+  plan: '{"intent": "metric_query", "metrics": ["开车率"], "time_range": {"start": "2026-09-01", "end": "2026-09-30", "grain": "month"}, "reasoning": "未提供时间，默认取基准月 2026-09，也要填进 time_range。"}'
 - note: (相对时间推算：最近 N 个月 —— 注意枚举并数个数)
   question: |-
     基准时间：2026-09-14
@@ -25,16 +25,16 @@
     基准时间：2026-09-14
     用户问题：近一年回款率最低的客户是哪家？
   plan: '{"intent": "metric_query", "metrics": ["回款率"], "dimensions": ["客户"], "time_range": {"start": "2025-10-01", "end": "2026-09-30", "grain": "month"}, "needs_knowledge": false, "reasoning": "基准月 2026-09。近一年 = 含基准月往前数 12 个自然月：2025-10 至 2026-09，共 12 个。"}'
-- note: (时间段超出一端：**裁剪**，不是拒答)
+- note: (今年以来：抽到基准月为止，是否超出数据覆盖由系统判断)
   question: |-
     基准时间：2026-09-14
     用户问题：今年以来各产品的销量是多少？
-  plan: '{"intent": "metric_query", "metrics": ["销量"], "dimensions": ["产品"], "time_range": {"start": "2026-01-01", "end": "2026-09-30", "grain": "month"}, "needs_knowledge": false, "reasoning": "「今年以来」= 2026-01-01 起。数据覆盖到 2026-09-30，终点裁剪到 2026-09-30。本期数据充足，属于"超出一端需裁剪"，不是 out_of_scope。"}'
-- note: (对比期无数据：**拒答**，和示例 8 对照着看)
+  plan: '{"intent": "metric_query", "metrics": ["销量"], "dimensions": ["产品"], "time_range": {"start": "2026-01-01", "end": "2026-09-30", "grain": "month"}, "needs_knowledge": false, "reasoning": "「今年以来」= 2026-01-01 ~ 基准月最后一天 2026-09-30。只抽时间，有没有数据由系统判断。"}'
+- note: (同比：对比期填 compare_range，对比期有没有数据由系统判断，不在这里拒答)
   question: |-
     基准时间：2026-09-14
     用户问题：今年二季度的一次合格率比去年二季度提高了多少？
-  plan: '{"intent": "out_of_scope", "metrics": ["一次合格率"], "needs_knowledge": false, "reasoning": "本期 2026-04 ~ 2026-06 有数据，但对比期去年二季度 2025-04 ~ 2025-06 完全在覆盖区间（2025-10-01 起）之外，对比期无数据，同比算不出来，不能用现有区间近似替代。"}'
+  plan: '{"intent": "metric_query", "metrics": ["一次合格率"], "time_range": {"start": "2026-04-01", "end": "2026-06-30", "grain": "quarter"}, "compare_range": {"start": "2025-04-01", "end": "2025-06-30", "grain": "quarter"}, "needs_knowledge": false, "reasoning": "本期是今年二季度 2026-04 ~ 2026-06；同比的对比期是去年二季度 2025-04 ~ 2025-06，填进 compare_range。"}'
 - note: (相对时间推算：上个月)
   question: |-
     基准时间：2026-09-14

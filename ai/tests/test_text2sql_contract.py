@@ -11,7 +11,7 @@ import pytest
 from chemq import pipeline
 from chemq import text2sql as t2s
 from chemq.llm import Llm, LlmResult, Usage
-from chemq.schemas import Intent, QueryPlan, SqlCandidate
+from chemq.schemas import Intent, QueryPlan, SqlCandidate, TimeRange
 from chemq.sqlguard import check
 from chemq.text2sql import SqlRun, Unanswerable, build_user_message, generate_and_run
 
@@ -121,7 +121,10 @@ def test_success_path_carries_sql_cost(monkeypatch):
 def _fake_plan(intent: Intent = "metric_query"):
     def f(_question):
         return LlmResult(
-            parsed=QueryPlan(intent=intent, needs_knowledge=False, reasoning="r"), usage=HAIKU
+            parsed=QueryPlan(
+                intent=intent, needs_knowledge=False, reasoning="r",
+                time_range=TimeRange(start="2026-08-01", end="2026-08-31"),
+            ), usage=HAIKU
         )
     return f
 

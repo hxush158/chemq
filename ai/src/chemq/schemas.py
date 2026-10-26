@@ -23,6 +23,11 @@ class QueryPlan(BaseModel):
     dimensions: list[str] = Field(default_factory=list, description="如 装置/产品/大区/客户")
     filters: dict[str, str] = Field(default_factory=dict)
     time_range: TimeRange | None = None
+    compare_range: TimeRange | None = Field(
+        default=None,
+        description="同比/环比/两期对比时的对比期；问题里没有对比就是 null",
+    )
+
     needs_knowledge: bool = Field(description="是否需要查制度/口径文档")
     reasoning: str = Field(description="一句话说明判断依据")
 
