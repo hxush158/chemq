@@ -30,7 +30,7 @@ CRITIC_SYSTEM = """你是数字核对员。给你一段分析结论和一份 SQL
 不要评价结论写得好不好，只核对数字。"""
 
 
-async def orchestrate(question: str, *, as_of: str, region: str | None = None) -> dict:
+async def orchestrate(question: str, *, as_of: str, scope: str | None = None) -> dict:
     from chemq.router import plan
     from chemq.text2sql import Unanswerable, generate_and_run
 
@@ -39,7 +39,7 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
         return {"refused": True, "reason": p.reasoning}
 
     try:
-        run = generate_and_run(p, region=region, question=question, as_of=as_of)
+        run = generate_and_run(p, scope=scope, question=question, as_of=as_of)
     except Unanswerable as e:
         return {"refused": True, "reason": e.reason}
     sql, rows, candidate = run.sql, run.rows, run.candidate

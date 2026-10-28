@@ -65,6 +65,19 @@ class Domain:
         return tuple(f"{self.schema}.{n}" for n in [*self.catalog["views"], *self.catalog["dims"]])
 
     @property
+    def scope_session_var(self) -> str | None:
+        """数据权限（scope）写进哪个会话变量（Postgres RLS 读它）。没配 = 这个领域不按 scope 隔离。"""
+        return (self.config.get("scope") or {}).get("session_var")
+
+    @property
+    def as_of(self) -> str:
+        """评测的"今天"。pipeline / Agent / CLI / API 不传 as_of 时也用它 —— 评测必须可复现，不能用 date.today()。"""
+        v = (self.config.get("eval") or {}).get("as_of")
+        if not v:
+            raise KeyError(f"domains/{self.id}/domain.yaml 里没有 eval.as_of")
+        return str(v)
+
+    @property
     def metric_dictionary_path(self) -> Path:
         return self.root / "metric_dictionary.yaml"
 

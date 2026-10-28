@@ -7,7 +7,7 @@
 工具的实现全在 tools.py（和 Agent SDK 编排共用一份），这里只做"接线"。
 暴露的工具刻意只有三个，都是只读；run_semantic_query 照样过 sqlguard。
 
-行级权限：region 从环境变量 CHEMQ_REGION 读，**不是工具参数** —— 见 tools.py 的说明。
+行级权限：scope 从环境变量 CHEMQ_SCOPE 读，**不是工具参数** —— 见 tools.py 的说明。
 
 ⚠ stdio 模式下 stdout 是协议通道，这个进程里任何 print 都会把协议打坏。要输出调试信息用 stderr。
 """
@@ -37,7 +37,7 @@ def _server_class() -> Any:
         return FastMCP
 
 
-def build_server(region: str | None = None) -> Any:
+def build_server(scope: str | None = None) -> Any:
     server = _server_class()("chemq", instructions=INSTRUCTIONS)
 
     # 工具说明用 tools.py 里的同一份（description= 优先于 docstring）
@@ -47,7 +47,7 @@ def build_server(region: str | None = None) -> Any:
 
     @server.tool(description=tools.DESC_RUN_SQL)
     def run_semantic_query(sql: str) -> dict:
-        return tools.run_semantic_query(sql, region=region)
+        return tools.run_semantic_query(sql, scope=scope)
 
     @server.tool(description=tools.DESC_SEARCH)
     def search_knowledge(question: str) -> dict:
@@ -57,7 +57,7 @@ def build_server(region: str | None = None) -> Any:
 
 
 def main() -> None:
-    build_server(region=os.environ.get("CHEMQ_REGION") or None).run(transport="stdio")
+    build_server(scope=os.environ.get("CHEMQ_SCOPE") or None).run(transport="stdio")
 
 
 if __name__ == "__main__":

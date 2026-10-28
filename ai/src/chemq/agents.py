@@ -19,7 +19,7 @@
   工具内部的 sqlguard     第三道：就算前两道都漏了，SQL 照样要过护栏（见 tools.py）
   Critic（critic.py）   回答里的每个数字都必须出现在工具真实返回的数据里
 
-region（行级权限）在建工具时绑定，不是工具参数，模型改不了。
+scope（行级权限）在建工具时绑定，不是工具参数，模型改不了。
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from typing import Any
 
 from . import critic, tools
 from .config import settings
+from .domain import domain
 from .kb_answer import NO_CITATION_TEXT
 from .prompts import render
 from .schemas import Answer, Citation
@@ -95,7 +96,7 @@ def _text(payload: Any) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]}
 
 
-def build_tools(rec: Recorder, region: str | None) -> list[Any]:
+def build_tools(rec: Recorder, scope: str | None) -> list[Any]:
     """三个工具包成 SDK 的进程内 MCP 工具。实现全在 tools.py，这里只做记录和格式转换。
     tools.py 里是同步的数据库 / Titan 调用，用 to_thread 放到线程里跑，不堵事件循环。"""
     from claude_agent_sdk import tool  # noqa: PLC0415
@@ -106,7 +107,7 @@ def build_tools(rec: Recorder, region: str | None) -> list[Any]:
 
     @tool("run_semantic_query", tools.DESC_RUN_SQL, {"sql": str})
     async def run_semantic_query(args: dict[str, Any]) -> dict[str, Any]:
-        r = await asyncio.to_thread(tools.run_semantic_query, args["sql"], region=region)
+        r = await asyncio.to_thread(tools.run_semantic_query, args["sql"], scope=scope)
         rec.sql_runs.append(r)
         out = _text(r)
         if not r["ok"]:
@@ -208,7 +209,7 @@ def to_answer(text: str, rec: Recorder, *, cost: float, stop: str, question: str
     )
 
 
-async def orchestrate(question: str, *, as_of: str, region: str | None = None) -> AgentRun:
+async def orchestrate(question: str, *, as_of: str, scope: str | None = None) -> AgentRun:
     from claude_agent_sdk import (  # noqa: PLC0415
         AssistantMessage,
         ClaudeAgentOptions,
@@ -234,7 +235,7 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
     options = ClaudeAgentOptions(
         system_prompt=SYSTEM_PROMPT.format(as_of=as_of, data_range=data_range()),
         tools=None if experiment_c else [],         # 去掉全部自带工具
-        mcp_servers={SERVER: create_sdk_mcp_server(name=SERVER, tools=build_tools(rec, region))},
+        mcp_servers={SERVER: create_sdk_mcp_server(name=SERVER, tools=build_tools(rec, scope))},
         allowed_tools=list(ALLOWED),                # 只是"不用问"，不是限制
         setting_sources=[],
         max_turns=MAX_TURNS,
@@ -274,9 +275,9 @@ async def orchestrate(question: str, *, as_of: str, region: str | None = None) -
     )
 
 
-def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
-    """同步入口，签名和 pipeline.answer 一样 —— 评测脚本可以无缝切换两种做法。"""
-    return asyncio.run(orchestrate(question, as_of=as_of, region=region)).answer
+def answer(question: str, *, as_of: str | None = None, scope: str | None = None) -> Answer:
+    """同步入口，签名和 pipeline.answer 一样 —— 评测脚本可以无缝切换两种做法。as_of 不传就用领域包的。"""
+    return asyncio.run(orchestrate(question, as_of=as_of or domain().as_of, scope=scope)).answer
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -284,13 +285,13 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description="用 Agent SDK 回答一个问题，打印调用过程")
     ap.add_argument("question")
-    ap.add_argument("--as-of", default="2026-09-14")
-    ap.add_argument("--region", default=None)
+    ap.add_argument("--as-of", default=None, help="基准时间，默认取领域包 eval.as_of")
+    ap.add_argument("--scope", default=None)
     a = ap.parse_args(argv)
 
     if os.environ.get("CHEMQ_AGENT_EXPERIMENT_C") == "1":
         print("⚠ 破坏实验 C：没有传 tools=[]，Agent 能看到全部自带工具；只靠 PreToolUse hook 拦\n")
-    run = asyncio.run(orchestrate(a.question, as_of=a.as_of, region=a.region))
+    run = asyncio.run(orchestrate(a.question, as_of=a.as_of or domain().as_of, scope=a.scope))
     shown = run.tools_available if len(run.tools_available) <= 6 else (
         run.tools_available[:12] + [f"…共 {len(run.tools_available)} 个"])
     print(f"Agent 看到的工具：{shown}")

@@ -1,4 +1,4 @@
-"""W4 的三个工具：不连数据库、不调 AWS。重点测"谁调都要过护栏"和"region 模型改不了"。"""
+"""W4 的三个工具：不连数据库、不调 AWS。重点测"谁调都要过护栏"和"scope 模型改不了"。"""
 import datetime as dt
 import inspect
 from decimal import Decimal
@@ -25,22 +25,22 @@ def test_guard_runs_before_db(sql):
     assert r["ok"] is False and r["stage"] == "guard" and r["violations"]
 
 
-def test_ok_query_gets_limit_region_and_jsonable_rows():
+def test_ok_query_gets_limit_scope_and_jsonable_rows():
     seen = {}
 
-    def fake_run(sql, region=None):
-        seen.update(sql=sql, region=region)
+    def fake_run(sql, scope=None):
+        seen.update(sql=sql, scope=scope)
         return [{"月份": dt.date(2026, 3, 1), "v": Decimal("134.75")}]
 
-    r = tools.run_semantic_query("SELECT * FROM chem.v_monthly_summary", region="华南", run=fake_run)
+    r = tools.run_semantic_query("SELECT * FROM chem.v_monthly_summary", scope="华南", run=fake_run)
     assert r["ok"] and r["row_count"] == 1
     assert "LIMIT" in seen["sql"].upper()
-    assert seen["region"] == "华南"
+    assert seen["scope"] == "华南"
     assert r["rows"] == [{"月份": "2026-03-01", "v": "134.75"}]     # Decimal / date 能直接 json
 
 
 def test_db_error_is_returned_not_raised():
-    def boom(sql, region=None):
+    def boom(sql, scope=None):
         raise RuntimeError('column "received_cny" does not exist')
 
     r = tools.run_semantic_query("SELECT 回款_cny FROM chem.v_sales_daily", run=boom)
@@ -49,14 +49,14 @@ def test_db_error_is_returned_not_raised():
 
 def test_rows_to_model_are_capped():
     r = tools.run_semantic_query("SELECT * FROM chem.v_plant_daily",
-                                 run=lambda sql, region=None: [{"v": i} for i in range(450)])
+                                 run=lambda sql, scope=None: [{"v": i} for i in range(450)])
     assert r["row_count"] == 450 and r["truncated"] and len(r["rows"]) == tools.MAX_ROWS_TO_MODEL
 
 
-def test_region_is_not_a_parameter_the_model_can_fill():
-    """MCP/Agent 暴露给模型的参数只有 sql；region 是 keyword-only，由服务端绑定。"""
+def test_scope_is_not_a_parameter_the_model_can_fill():
+    """MCP/Agent 暴露给模型的参数只有 sql；scope 是 keyword-only，由服务端绑定。"""
     p = inspect.signature(tools.run_semantic_query).parameters
-    assert p["region"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert p["scope"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 class FakeEmbedder:
@@ -91,4 +91,4 @@ def test_list_metrics_has_dictionary_and_catalog():
 def test_mcp_server_builds():
     pytest.importorskip("mcp")
     from chemq.mcp_server import build_server
-    assert build_server(region="华南") is not None
+    assert build_server(scope="华南") is not None

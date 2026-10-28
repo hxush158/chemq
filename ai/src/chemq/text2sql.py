@@ -10,7 +10,7 @@ TODO(W2):
   1. 把语义层视图的 DDL + COMMENT 注入 system（schema linking 的最简版本）
   2. 生成 SqlCandidate（structured outputs），再过 sqlguard.check
   3. 被拦下时带着 violations 重试一次，仍失败则拒答，不要静默降级
-  4. 执行走 db.run_query（只读账号 + RLS region）
+  4. 执行走 db.run_query（只读账号 + RLS scope）
 """
 from __future__ import annotations
 
@@ -142,7 +142,7 @@ def generate(
 
 def generate_and_run(
     plan: QueryPlan,
-    region: str | None = None,
+    scope: str | None = None,
     *,
     question: str = "",
     as_of: str | None = None,
@@ -171,4 +171,4 @@ def generate_and_run(
             kind="guard_rejected", cost_usd=cost, sql=candidate.sql,
         )
     sql = verdict.rewritten_sql
-    return SqlRun(sql=sql, rows=run_query(sql, region=region), candidate=candidate, cost_usd=cost)
+    return SqlRun(sql=sql, rows=run_query(sql, scope=scope), candidate=candidate, cost_usd=cost)

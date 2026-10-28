@@ -23,7 +23,7 @@ log = structlog.get_logger()
 MAX_REPAIR = 3
 
 
-def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, list[dict], SqlCandidate]:
+def generate_and_run(plan: QueryPlan, scope: str | None = None) -> tuple[str, list[dict], SqlCandidate]:
     llm = Llm()
     # 决定 1：W2 整份注入（只有 4 个视图）。
     # schema linking 的失败模式是"该给的表没给"，症状是模型编列名，很难 debug；
@@ -46,7 +46,7 @@ def generate_and_run(plan: QueryPlan, region: str | None = None) -> tuple[str, l
 
         if verdict.ok and verdict.rewritten_sql is not None:
             sql = verdict.rewritten_sql          # 收窄成 str，见 sqlguard.py 顶部的 SqlNode 注释
-            rows = run_query(sql, region=region)
+            rows = run_query(sql, scope=scope)
             log.info("sql_ok", attempt=attempt, rows=len(rows),
                      metrics=candidate.metric_definitions_used)
             return sql, rows, candidate

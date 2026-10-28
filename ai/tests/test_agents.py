@@ -84,21 +84,21 @@ def test_prompt_does_not_leak_golden_questions():
 
 # ---------- 需要 claude_agent_sdk（make install-agent）----------
 
-def test_tool_wrapper_binds_region_and_marks_errors(monkeypatch):
+def test_tool_wrapper_binds_scope_and_marks_errors(monkeypatch):
     pytest.importorskip("claude_agent_sdk")
     seen = {}
 
-    def fake_run(sql, *, region=None):
-        seen["region"] = region
+    def fake_run(sql, *, scope=None):
+        seen["scope"] = scope
         return {"ok": False, "stage": "guard", "violations": ["不允许访问 chem.fact_sales"]}
 
     monkeypatch.setattr(agents.tools, "run_semantic_query", fake_run)
     rec = Recorder()
-    tools = {t.name: t for t in agents.build_tools(rec, region="华南")}
+    tools = {t.name: t for t in agents.build_tools(rec, scope="华南")}
     assert set(tools) == set(agents.TOOL_NAMES)
     out = asyncio.run(tools["run_semantic_query"].handler({"sql": "SELECT * FROM chem.fact_sales"}))
     assert out["is_error"] is True and "fact_sales" in out["content"][0]["text"]
-    assert seen["region"] == "华南" and rec.sql_runs[0]["ok"] is False
+    assert seen["scope"] == "华南" and rec.sql_runs[0]["ok"] is False
 
 
 def test_pre_hook_denies_tools_outside_whitelist():

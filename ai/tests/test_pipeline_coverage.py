@@ -45,13 +45,13 @@ def test_clipped_plan_and_warning_survive_success_paths(stages, intent, kb_refus
         answer="知识库结果", refused=kb_refused,
         kind="no_hit" if kb_refused else None, cost_usd=0.03,
     )
-    result = pipeline.answer("测试裁剪", region="test-region")
+    result = pipeline.answer("测试裁剪", scope="test-scope")
     sent_plan = stages.sql.call_args.args[0]
     assert sent_plan is not plan
     assert sent_plan.time_range.start == "2025-10-01"
     assert sent_plan.time_range.end == "2025-11-30"
     assert plan.model_dump() == before
-    assert stages.sql.call_args.kwargs["region"] == "test-region"
+    assert stages.sql.call_args.kwargs["scope"] == "test-scope"
     assert not result.refused and result.intent == intent
     assert "裁剪" in result.caveats[0]
     assert "2025-09-01" in result.caveats[0] and "2025-10-01" in result.caveats[0]

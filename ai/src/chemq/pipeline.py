@@ -16,14 +16,16 @@ from __future__ import annotations
 import uuid
 
 from .coverage import check_time, load_coverage
+from .domain import domain
 from .kb_answer import answer_from_kb
 from .router import plan  # 需要引入写好的 plan 函数
 from .schemas import Answer
 from .text2sql import Unanswerable, generate_and_run
 
 
-def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
-    """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。"""
+def answer(question: str, *, as_of: str | None = None, scope: str | None = None) -> Answer:
+    """as_of 是"今天"的固定值 —— 评测必须可复现，不能用 date.today()。不传就用领域包的 eval.as_of。"""
+    as_of = as_of or domain().as_of
     
     trace_id = new_trace_id()
     
@@ -72,7 +74,7 @@ def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = Non
 
         try:
             run = generate_and_run(
-                query_plan, region=region,
+                query_plan, scope=scope,
                 question=question, as_of=as_of,   # 原话透传：「最低」「两个」这些词 QueryPlan 里没有
             )
         except Unanswerable as e:

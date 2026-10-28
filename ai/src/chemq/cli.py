@@ -41,8 +41,8 @@ def main() -> int:
     for name in ("ask", "plan", "sql", "tokens"):
         s = sub.add_parser(name)
         s.add_argument("question")
-        s.add_argument("--as-of", default="2026-09-14")
-        s.add_argument("--region", default=None)
+        s.add_argument("--as-of", default=None, help="基准时间，默认取领域包 eval.as_of")
+        s.add_argument("--scope", default=None)
     e = sub.add_parser("eval")
     e.add_argument("--week", type=int, default=1)
     args = ap.parse_args()
@@ -86,7 +86,7 @@ def main() -> int:
         return 0
 
     from .pipeline import answer  # noqa: PLC0415
-    a = answer(args.question, as_of=args.as_of, region=args.region)
+    a = answer(args.question, as_of=args.as_of, scope=args.scope)
     print(a.answer)
     if a.sql:
         print("\n--- SQL ---\n" + a.sql)

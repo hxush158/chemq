@@ -80,7 +80,7 @@
 | 预算 / 轮数上限 | 失控循环、工具太多导致的成本膨胀 | `max_turns=8`、`max_budget_usd=0.10` | — |
 | sqlguard | 写操作、越表、无 LIMIT、多语句 | 生效 | 数据库权限 |
 | 只读角色 + statement_timeout | 前面几层有 bug | 生效 | — |
-| RLS 按大区隔离 | 跨大区看数据 | **目前不生效**：视图以 owner 身份执行绕过 RLS；且未设 region 时默认返回全量。W5 改成 fail-closed | — |
+| RLS 按大区隔离 | 跨大区看数据 | **目前不生效**：视图以 owner 身份执行绕过 RLS；且未设 scope 时默认返回全量。W5 改成 fail-closed | — |
 | 代码 Critic（Agent） | 回答里出现数据里没有的数字 | 生效，边界见原则 1 | 人工 |
 
 实验 C 的结论也写在这里：给 Agent 全套内置工具（27 个）后，简单拒答成本从 $0.003 涨到 $0.016，
@@ -111,10 +111,10 @@
 `db.py` 定义 `Engine` Protocol（`readonly_cursor` / `run_query` / `app_cursor`），
 按 `settings().sql_dialect` 选实现：
 
-- `PostgresEngine`：一个只读账号，每次连接设 `statement_timeout` 和 `chemq.region`。
+- `PostgresEngine`：一个只读账号，每次连接设 `statement_timeout`、`search_path`，以及数据权限 scope 对应的会话变量（变量名来自领域包，化工是 `chemq.region`）。
 - `DorisEngine`：W5 实现，目前是桩。不只是语法翻译 ——
   超时单位不同（`query_timeout` 秒），而且 Doris 读不了会话变量，
-  region 要改成"一个大区一个 role + 一个连接"。
+  scope 要改成"一个大区一个 role + 一个连接"。
 - 语义层目录按方言查找：`domains/chem/<dialect>/semantic_catalog.md`，找不到再用 `domains/chem/semantic_catalog.md`。
 - 知识库检索（`hybrid_search`）在 Doris 方案下仍直连 Postgres（pgvector）。
 

@@ -77,7 +77,7 @@ async def _collect() -> list[dict]:
             for x in domain().golden_path.read_text(encoding="utf-8").splitlines() if x.strip()}
     out = []
     for qid in QUESTIONS:
-        run = await orchestrate(gold[qid]["question"], as_of="2026-09-14")
+        run = await orchestrate(gold[qid]["question"], as_of=domain().as_of)
         out.append({"id": qid, "question": gold[qid]["question"], "answer": run.answer.answer,
                     "rows": run.rows_all, "texts": run.cited_texts, "cost": run.answer.cost_usd})
         print(f"  {qid} ${run.answer.cost_usd:.4f}")

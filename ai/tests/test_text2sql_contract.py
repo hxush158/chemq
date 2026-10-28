@@ -51,7 +51,7 @@ def test_user_message_carries_question_and_as_of():
 
 
 def test_question_reaches_the_model(monkeypatch):
-    monkeypatch.setattr(t2s, "run_query", lambda sql, region=None: [{"v": 1}])
+    monkeypatch.setattr(t2s, "run_query", lambda sql, scope=None: [{"v": 1}])
     fake = FakeLlm(SqlCandidate(sql="SELECT plant_name FROM chem.v_plant_daily"))
     generate_and_run(PLAN, question="9月一次合格率最低的两个装置？", as_of="2026-09-14", llm=cast(Llm, fake))
     assert "最低的两个" in fake.calls[0]["user"]
@@ -110,7 +110,7 @@ def test_unanswerable_is_still_a_permission_error():
 # ================= ③ 成本 =================
 
 def test_success_path_carries_sql_cost(monkeypatch):
-    monkeypatch.setattr(t2s, "run_query", lambda sql, region=None: [{"v": 1}])
+    monkeypatch.setattr(t2s, "run_query", lambda sql, scope=None: [{"v": 1}])
     run = generate_and_run(PLAN, llm=cast(Llm, FakeLlm(SqlCandidate(sql="SELECT 产量_t FROM chem.v_plant_daily"))))
     assert isinstance(run, SqlRun)
     assert run.rows == [{"v": 1}]

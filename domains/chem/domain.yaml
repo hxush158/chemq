@@ -1,5 +1,4 @@
 # 化工领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
-# scope / eval 在第 3 步加进来。
 id: chem
 locale: zh
 display_name: 示例化工
@@ -26,6 +25,16 @@ catalog:
       sql: SELECT customer_id, customer_name, region FROM dim_customer ORDER BY 1
     - title: 能源（energy_id / energy_name）
       sql: SELECT energy_id, energy_name, uom FROM dim_energy_type ORDER BY 1
+
+# 数据权限（scope）：化工按大区隔离。Postgres 侧 RLS 策略读会话变量 chemq.region
+# （见 data/03_semantic_views.sql），引擎每次查询前把调用方给的 scope 写进这个变量。
+# scope 为空或 'ALL' 时策略放行全部（W5 要改成 fail-closed，见 docs/01-architecture.md）。
+scope:
+  session_var: chemq.region
+
+# 评测的"今天"。评测、CLI、API、Agent 不传 as_of 时都用它。
+eval:
+  as_of: "2026-09-14"
 
 # 填进通用提示词模板（ai/src/chemq/prompts/<locale>/）的空位 {{name}}。
 prompt_slots:

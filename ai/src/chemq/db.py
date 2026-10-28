@@ -4,12 +4,13 @@
 不是换个驱动就完事的：
 
   1. 协议不同。Doris 说 MySQL 协议（FE 查询口 9030），psycopg 连不上。
-  2. 行级权限的机制不同。
-     Postgres：一个只读账号 + 每次请求 set_config('chemq.region', ...)
+  2. 行级权限（scope，数据权限范围；化工包里是"大区"）的机制不同。
+     Postgres：一个只读账号 + 每次请求 set_config(<会话变量>, scope)
+               会话变量名来自领域包 domain.yaml 的 scope.session_var（化工是 chemq.region）
      Doris   ：谓词是静态的、绑在 role 上（CREATE ROW POLICY ... TO ROLE x USING (...)），
-               读不了会话变量 —— 所以 region 得靠「选哪个连接」来表达。
+               读不了会话变量 —— 所以 scope 得靠「选哪个连接」来表达。
 
-第 2 条才是这个抽象存在的理由。调用方 text2sql.generate_and_run(plan, region=...)
+第 2 条才是这个抽象存在的理由。调用方 text2sql.generate_and_run(plan, scope=...)
 的签名两边完全一样，差异全吃在 Engine 实现里。
 业务代码里不该出现 if dialect == ...。
 """
@@ -28,11 +29,21 @@ class Engine(Protocol):
 
     dialect: str
 
-    def readonly_cursor(self, region: str | None = None) -> Any: ...
+    def readonly_cursor(self, scope: str | None = None) -> Any: ...
     def run_query(
-        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+        self, sql: str, scope: str | None = None, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]: ...
     def app_cursor(self) -> Any: ...
+
+
+def scope_session_var(scope: str | None) -> str | None:
+    """scope 要写进哪个会话变量。scope 为空 → None；给了 scope 但领域包没配 → 报错。"""
+    if not scope:
+        return None
+    var = domain().scope_session_var
+    if not var:
+        raise ValueError(f"领域包 {domain().id} 没有配置 scope.session_var，不能按 scope={scope!r} 过滤")
+    return var
 
 
 class PostgresEngine:
@@ -41,8 +52,12 @@ class PostgresEngine:
     dialect = "postgres"
 
     @contextmanager
-    def readonly_cursor(self, region: str | None = None) -> Iterator[Any]:
+    def readonly_cursor(self, scope: str | None = None) -> Iterator[Any]:
         """取数用。每次连接都设 statement_timeout 与行级权限上下文。"""
+        # 会话变量名由领域包决定（化工：chemq.region，RLS 策略读它）。
+        # 领域包没配却传了 scope → 连库之前就报错：不能悄悄忽略权限范围（fail-closed）。
+        var = scope_session_var(scope)
+
         import psycopg  # noqa: PLC0415
         from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -52,14 +67,14 @@ class PostgresEngine:
             with conn.cursor() as cur:
                 cur.execute(f"SET statement_timeout = {int(s.statement_timeout_ms)}")
                 cur.execute(f"SET search_path = {domain().schema}, public")   # schema 已校验过是标识符
-                if region:
-                    cur.execute("SELECT set_config('chemq.region', %s, false)", (region,))
+                if var:
+                    cur.execute("SELECT set_config(%s, %s, false)", (var, scope))
                 yield cur
 
     def run_query(
-        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+        self, sql: str, scope: str | None = None, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        with self.readonly_cursor(region) as cur:
+        with self.readonly_cursor(scope) as cur:
             # params 为 None 时 psycopg 不解析 % 占位符 —— 模型生成的 SQL 里可能有
             # LIKE '%甲醇%' 或 Doris 的 date_format('%Y-%m')，千万别给它传 {}。
             cur.execute(sql, params)
@@ -94,12 +109,12 @@ class DorisEngine:
          领域包的白名单（domain().allowed_relations）一个字都不用改 ——
          sqlguard._qualified() 取的是 table.text("db")，两边输出一致。
 
-      4. region：**这里是真正的设计改动，不是翻译。**
+      4. scope：**这里是真正的设计改动，不是翻译。**
          Doris 的 row policy 谓词是静态的、绑在 user/role 上，读不了会话变量。
-         所以不能「一个账号 + 每次 SET region」，得改成一个大区一个 role + 一个连接：
+         所以不能「一个账号 + 每次 SET 会话变量」，得改成一个 scope（大区）一个 role + 一个连接：
              CREATE ROW POLICY rls_huanan ON fact_sales
                AS RESTRICTIVE TO ROLE ro_huanan USING (region = '华南');
-         这个方法里要按 region 挑 DSN，而不是连上之后再设变量。
+         这个方法里要按 scope 挑 DSN，而不是连上之后再设变量。
          反过来有个好消息：Doris 的 policy 是按**查询者**生效的，
          所以 Postgres 那个「视图以 owner 身份执行 → 超管绕过 RLS」的坑不存在。
          （另：Doris 明确不能给 root/admin 建 row policy，别用 root 测。）
@@ -113,11 +128,11 @@ class DorisEngine:
         "或者见 db.py 里 DorisEngine 的 TODO(W5) 四条。"
     )
 
-    def readonly_cursor(self, region: str | None = None) -> Any:
+    def readonly_cursor(self, scope: str | None = None) -> Any:
         raise NotImplementedError(self._TODO)
 
     def run_query(
-        self, sql: str, region: str | None = None, params: dict[str, Any] | None = None
+        self, sql: str, scope: str | None = None, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         raise NotImplementedError(self._TODO)
 
@@ -144,16 +159,16 @@ def engine() -> Engine:
 
 
 @contextmanager
-def readonly_cursor(region: str | None = None) -> Iterator[Any]:
-    with engine().readonly_cursor(region) as cur:
+def readonly_cursor(scope: str | None = None) -> Iterator[Any]:
+    with engine().readonly_cursor(scope) as cur:
         yield cur
 
 
 def run_query(
-    sql: str, region: str | None = None, params: dict[str, Any] | None = None
+    sql: str, scope: str | None = None, params: dict[str, Any] | None = None
 ) -> list[dict[str, Any]]:
     """params 只给我们自己写的固定 SQL 用（比如 RAG 检索）。模型生成的 SQL 不传参数。"""
-    return engine().run_query(sql, region=region, params=params)
+    return engine().run_query(sql, scope=scope, params=params)
 
 
 @contextmanager

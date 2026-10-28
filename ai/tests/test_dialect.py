@@ -114,7 +114,7 @@ def test_doris_engine_raises_instead_of_returning_empty():
     with pytest.raises(NotImplementedError):
         e.run_query("SELECT 1")
     with pytest.raises(NotImplementedError):
-        e.readonly_cursor(region="华南")
+        e.readonly_cursor(scope="华南")
 
 
 def test_engine_registry():

@@ -163,7 +163,7 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipel
         from chemq.pipeline import answer  # noqa: PLC0415  这是你要实现的入口
 
     t0 = time.perf_counter()
-    result = answer(case["question"], as_of="2026-09-14")
+    result = answer(case["question"], as_of=domain().as_of)
     rep.latencies.append(int((time.perf_counter() - t0) * 1000))
     rep.cost_usd += getattr(result, "cost_usd", 0.0)
 

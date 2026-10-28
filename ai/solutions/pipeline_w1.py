@@ -18,7 +18,7 @@ REFUSAL_TEMPLATES = {
 }
 
 
-def answer(question: str, *, as_of: str = "2026-09-14", region: str | None = None) -> Answer:
+def answer(question: str, *, as_of: str = "2026-09-14", scope: str | None = None) -> Answer:
     trace_id = str(uuid.uuid4())
     llm = Llm()
 

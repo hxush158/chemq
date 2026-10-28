@@ -8,8 +8,8 @@ Agent SDK 的编排（agents.py）都调这里，保证两边的安全检查完�
 两条原则：
   1. **调用方是谁都要过 sqlguard。** MCP 的调用方是可以换的 —— 今天是 Claude Code，
      明天可能是别人写的 agent。护栏放在工具里，不放在"相信调用方"上。
-  2. **region（行级权限）不是工具参数。** 它由服务端在建工具时绑定，模型改不了。
-     如果把 region 做成参数，模型（或注入进问题里的指令）就能自己填"全国"。
+  2. **scope（行级权限）不是工具参数。** 它由服务端在建工具时绑定，模型改不了。
+     如果把 scope 做成参数，模型（或注入进问题里的指令）就能自己填"全国"。
 
 工具的返回值都是可以直接 json.dumps 的 dict / str，出错也返回 dict（ok=False），
 不抛异常 —— 让模型看到原因、自己改 SQL，比整个 agent 崩掉有用。
@@ -52,10 +52,10 @@ def list_metrics() -> str:
 def run_semantic_query(
     sql: str,
     *,
-    region: str | None = None,
+    scope: str | None = None,
     run: Callable[..., list[dict]] | None = None,
 ) -> dict[str, Any]:
-    """region 由调用方（服务端）绑定，不暴露给模型；run 只给测试注入用。"""
+    """scope 由调用方（服务端）绑定，不暴露给模型；run 只给测试注入用。"""
     from .sqlguard import check  # noqa: PLC0415
 
     s = settings()
@@ -67,7 +67,7 @@ def run_semantic_query(
     if run is None:
         from .db import run_query as run  # noqa: PLC0415
     try:
-        rows = run(verdict.rewritten_sql, region=region)
+        rows = run(verdict.rewritten_sql, scope=scope)
     except Exception as e:  # noqa: BLE001 —— 语法错、列名错：把原因还给模型让它改
         return {"ok": False, "stage": "execute", "sql": verdict.rewritten_sql,
                 "error": f"{type(e).__name__}: {e}"[:500]}
