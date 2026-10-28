@@ -1,7 +1,8 @@
 """方言表：同一条规则在不同 SQL 引擎上的写法。属于引擎层，和领域包无关。
 
 提示词模板里用 {{ENGINE}}、{{ENGINE_NAME}}、{{MONTH_FMT}} 引用这里的值（见 chemq/prompts）。
-W1 第 4 步在这里加 duckdb / snowflake，敏感 token 表也会从 sqlguard 挪过来。
+W1 第 4 步在这里加 duckdb，W2 加 snowflake：每加一种方言，两张表（DIALECT_PROFILE、
+SENSITIVE_TOKENS_BY_DIALECT）都要加一条。
 """
 from __future__ import annotations
 
@@ -29,3 +30,31 @@ def profile(dialect: str) -> dict[str, str]:
         return DIALECT_PROFILE[dialect]
     except KeyError:
         raise ValueError(f"没有 {dialect!r} 的方言配置，可选：{sorted(DIALECT_PROFILE)}") from None
+
+
+# 敏感 token 是 AST 白名单之上的「腰带」，不是「裤子」—— 结构性攻击由 AST 拦，
+# 这里只补那些「语法完全合法、但在这个引擎上能读到不该读的东西」的函数与语句。
+# 它是按引擎走的：pg_read_file 在 Doris 上不存在，INTO OUTFILE 在 Postgres 上不存在。
+_TOKENS_COMMON = ("information_schema", "set role")
+
+_TOKENS_POSTGRES = (
+    "pg_catalog", "pg_sleep", "pg_read_file",
+    "pg_ls_dir", "lo_import", "dblink", "copy ", "\\copy",
+)
+
+# ⚠️ 这一组是按 Doris 的能力推的，W5 接真实 Doris 时必须逐条验证：
+#   into outfile / export  —— Doris 导出到 S3/HDFS/本地，是最直接的拖库通道
+#   s3( / hdfs( / local( / jdbc(  —— 表值函数，能绕过白名单直接读外部数据源
+#   __internal_schema      —— Doris 内部库
+#   sleep(                 —— MySQL 系的耗时函数，打满 FE 连接
+_TOKENS_DORIS = (
+    "into outfile", "outfile", "export ", "__internal_schema",
+    "sleep(", "s3(", "hdfs(", "local(", "jdbc(",
+)
+
+SENSITIVE_TOKENS_BY_DIALECT: dict[str, tuple[str, ...]] = {
+    "postgres": _TOKENS_COMMON + _TOKENS_POSTGRES,
+    "doris": _TOKENS_COMMON + _TOKENS_DORIS,
+}
+
+# 兼容旧引用：默认仍是 Postgres 那一套

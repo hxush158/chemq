@@ -28,3 +28,7 @@ Claude outputs/
 
 # Claude Code 的个人设置（「不再询问」存下来的规则会写进这里），不进仓库
 .claude/settings.local.json
+
+# DuckDB 服务库（make duckdb-serve 生成）：几十 MB，随时能从 dbt 库重建，不进仓库
+domains/*/data/*.duckdb
+*.duckdb.wal

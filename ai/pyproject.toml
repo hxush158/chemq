@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-db    = ["psycopg[binary,pool]>=3.2", "pgvector>=0.3"]   # W2 起
+db    = ["psycopg[binary,pool]>=3.2", "pgvector>=0.3", "duckdb>=1.1"]   # W2 起；duckdb 是阶段二 NZ 包的引擎
 agent = ["claude-agent-sdk>=0.2", "mcp>=1.2"]            # W4 起（Agent SDK 自带 Claude Code 程序）
 serve = ["fastapi>=0.115", "uvicorn[standard]>=0.32"]    # W5 起
 aws   = ["boto3[crt]>=1.41"]                             # W3 起：Titan 向量化。>=1.41+crt 才能读 aws login 的凭证
