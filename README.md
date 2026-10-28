@@ -36,7 +36,7 @@ This is a learning project with a deliberate structure: the infrastructure is co
 |---|---|
 | ✅ Complete | Star-schema database + semantic layer, 12 months of synthetic data, SQL guard + tests, LLM client wrapper with cost accounting, evaluation harness + comparison tooling, diagnostic scripts, CI |
 | 🔨 The exercise | `router.py` · `text2sql.py` · `rag.py` · `agents.py` — reference implementations live in `ai/solutions/`, each opening with the questions the module is really about |
-| 📋 Planned | .NET gateway (auth, data permissions, audit), AWS CDK deployment |
+| 📋 Planned | NZ electricity domain pack on the same engine (DuckDB / Snowflake), FastAPI + Streamlit on Azure Container Apps — see `docs/10-flagship-plan.md` |
 
 `CLAUDE.md` instructs Claude Code not to write the four exercise modules — the point is to build them, not to have them.
 
@@ -123,7 +123,7 @@ ai/solutions/         reference implementations
 ai/evals/             eval runners, A/B comparison
 scripts/              bootstrap, diagnostics, catalog builder, cache lab, git pre-flight
 docs/weekly/          the six-week curriculum
-gateway/ · infra/     .NET gateway and AWS CDK (planned)
+infra/                AWS budget alerts (from the original AWS deployment plan)
 ```
 
 ---

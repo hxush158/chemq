@@ -17,7 +17,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint gateway clean
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -169,9 +169,6 @@ runs:            ## 连跑 N 次并存档  用法: make runs G=after N=3
 
 lint:
 	cd ai && uv run ruff check src evals solutions tests
-
-gateway:         ## 起 .NET 网关（W5）
-	cd gateway/ChemQ.Gateway && dotnet run
 
 clean:           ## 清掉缓存和临时产物
 	rm -rf ai/.venv ai/.pytest_cache ai/.ruff_cache eval-report*.json

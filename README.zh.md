@@ -33,8 +33,7 @@ domains/chem/data/  schema · 语义层视图 · 只读角色与 RLS · 数据�
 ai/src/chemq/       AI 服务层（领域无关的引擎；domain.py 选领域包）
 ai/solutions/       参考实现 —— 先自己写 30 分钟再翻
 ai/evals/           跑分器 ← 这是学习闭环的核心
-gateway/            .NET 网关（W5）
-infra/              AWS CDK (C#)（W5）
+infra/              AWS 预算告警配置（原 AWS 部署计划留下的，去留待定）
 docs/concepts/      概念卡（面试复习册）
 docs/labs/          破坏实验
 docs/journal/       学习笔记

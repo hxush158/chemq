@@ -7,7 +7,6 @@
     "ms-azuretools.vscode-docker",   // 侧边栏管理容器，看日志不用敲命令
     "mtxr.sqltools",                 // 在编辑器里直接连库写 SQL
     "mtxr.sqltools-driver-pg",       // SQLTools 的 PostgreSQL 驱动
-    "ms-dotnettools.csdevkit",       // W5 才用得上（.NET 网关）
     "anthropic.claude-code",         // Claude Code 的 VS Code 扩展
     "yzhang.markdown-all-in-one"     // 写学习笔记用
   ]

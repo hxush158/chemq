@@ -1,7 +1,7 @@
-"""W5 交付物：FastAPI 服务，部署到 Lambda。
+"""FastAPI 服务（阶段二 W4 部署到 Azure Container Apps，见 docs/10-flagship-plan.md）。
 
-和 .NET 网关的分工（这是 W5 要想清楚的架构问题）：
-    .NET 网关   认证(Cognito JWT 校验)、数据权限(user -> scope)、审计、限流、幂等
+和上游网关的分工（原来的 .NET 网关已经移除，C# 另外单独学）：
+    上游网关    认证、数据权限(user -> scope)、审计、限流、幂等
     本服务      AI 编排与取数，只信任网关传来的 X-Chemq-Scope / X-Chemq-User
 
 为什么不让 Python 服务直接做认证：企业里认证/授权/审计通常已经有统一的一层，
