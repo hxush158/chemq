@@ -1,0 +1,22 @@
+# NZ Power 领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
+id: nz_power
+locale: en
+display_name: NZ Electricity Market
+schema: main
+dialects: [duckdb]
+
+catalog:
+  views: [mart_current_price, mart_daily_price, v_dim_node]
+  dims: []
+
+eval:
+  as_of: "2026-09-30"
+  snapshot:
+    rows: 2156450               # mart_current_price 的行数
+    price_sum: "137078471.80"   # sum(CAST(price_nzd_per_mwh AS DECIMAL(18, 2)))
+
+serving:
+  date_columns:                # 每个对象按哪一列截到 as_of；没列出来的不截
+    mart_current_price: trading_date
+    mart_daily_price: trading_date
+    v_dim_node: first_seen_date

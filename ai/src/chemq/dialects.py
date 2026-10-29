@@ -22,6 +22,11 @@ DIALECT_PROFILE: dict[str, dict[str, str]] = {
         "ENGINE_NAME": "Apache Doris",
         "MONTH_FMT": "date_format(<日期列>, '%Y-%m')",
     },
+    "duckdb": {
+        "ENGINE": "DuckDB",
+        "ENGINE_NAME": "DuckDB",
+        "MONTH_FMT": "strftime(<日期列>, '%Y-%m')",
+    },
 }
 
 
@@ -52,9 +57,18 @@ _TOKENS_DORIS = (
     "sleep(", "s3(", "hdfs(", "local(", "jdbc(",
 )
 
+# DuckDB：读文件的表值函数（read_* / glob / parquet_scan）、挂别的库（attach）、
+# 装扩展（install / load）、导入导出（copy / export / import database）、读环境（getenv / duckdb_settings）。
+# 引擎连接时已关掉外部访问，这里是 sqlguard 这一层的拦截，两层都要有。
+_TOKENS_DUCKDB = (
+    "read_csv", "read_csv_auto", "read_parquet", "parquet_scan",
+    "read_json", "read_json_auto", "read_text", "read_blob", "glob(",
+    "attach", "install ", "load ", "copy ",
+    "export database", "import database", "getenv(", "duckdb_settings",
+)
+
 SENSITIVE_TOKENS_BY_DIALECT: dict[str, tuple[str, ...]] = {
     "postgres": _TOKENS_COMMON + _TOKENS_POSTGRES,
     "doris": _TOKENS_COMMON + _TOKENS_DORIS,
+    "duckdb": _TOKENS_COMMON + _TOKENS_DUCKDB,
 }
-
-# 兼容旧引用：默认仍是 Postgres 那一套

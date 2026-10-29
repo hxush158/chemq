@@ -47,6 +47,9 @@ def main() -> int:
     e.add_argument("--week", type=int, default=1)
     args = ap.parse_args()
 
+    from .db import engine  # noqa: PLC0415
+    engine()  # 在处理命令之前，检查领域包与方言是否匹配（不匹配就报错）
+
     if args.cmd == "eval":
         import subprocess  # noqa: PLC0415
         import sys  # noqa: PLC0415

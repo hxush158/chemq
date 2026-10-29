@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from functools import lru_cache
+from pathlib import Path
+from threading import Timer
 from typing import Any, Iterator, Protocol
 
 from .config import settings
@@ -140,19 +142,119 @@ class DorisEngine:
         raise NotImplementedError(self._TODO)
 
 
-_ENGINES: dict[str, type] = {"postgres": PostgresEngine, "doris": DorisEngine}
+class DuckDBEngine:
+    """只读访问预先构建好的 DuckDB serving 库。"""
+
+    dialect = "duckdb"
+
+    @contextmanager
+    def readonly_cursor(self, scope: str | None = None) -> Iterator[Any]:
+        # 先复用领域包校验
+        scope_session_var(scope)
+        # 即使领域包声明了 scope，DuckDB 目前也没有实现权限过滤。
+        if scope:
+            raise ValueError("DuckDB 暂不支持 scope，不能忽略数据权限范围")
+        s = settings()
+        if not s.duckdb_path.strip():
+            raise ValueError("请配置 CHEMQ_DUCKDB_PATH，指向 DuckDB serving 库")
+
+        path = Path(s.duckdb_path).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"DuckDB serving 库不存在：{path}")
+
+        import duckdb  # noqa: PLC0415
+
+        conn = duckdb.connect(
+            str(path),
+            read_only=True,
+            config={
+                "enable_external_access": False,
+                "autoinstall_known_extensions": False,
+                "autoload_known_extensions": False,
+                "memory_limit": "1GB",
+                "threads": 2,
+                "lock_configuration": True,
+            },
+        )
+        try:
+            # DuckDB 的连接对象本身支持 execute / fetchall。
+            yield conn
+        finally:
+            conn.close()
+
+    def run_query(
+        self,
+        sql: str,
+        scope: str | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        timeout_ms = settings().statement_timeout_ms
+        if timeout_ms <= 0:
+            raise ValueError("DuckDB 的 statement_timeout_ms 必须大于 0")
+
+        with self.readonly_cursor(scope) as conn:
+            # Timer 的单位是秒；传方法本身，到时间再调用。
+            timer = Timer(timeout_ms / 1000.0, conn.interrupt)
+            timer.daemon = True
+            timer.start()
+
+            try:
+                if params is None:
+                    conn.execute(sql)
+                else:
+                    conn.execute(sql, params)
+
+                description = conn.description
+                if description is None:
+                    raise ValueError("查询没有返回结果集")
+
+                columns = [column[0] for column in description]
+                if len(columns) != len(set(columns)):
+                    raise ValueError("查询返回了重复列名，请使用唯一的列别名")
+
+                rows = conn.fetchall()
+            finally:
+                # 无论成功、SQL 错误还是被中断，都清理计时器。
+                timer.cancel()
+                # cancel 不会停止已经开始的回调；等它结束后才能关闭连接。
+                timer.join()
+
+            return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def app_cursor(self) -> Any:
+        raise NotImplementedError(
+            "DuckDBEngine 不支持写入审计表，请使用 PostgreSQL 的写入入口"
+        )
+
+
+_ENGINES: dict[str, type] = {
+    "postgres": PostgresEngine, "doris": DorisEngine, "duckdb": DuckDBEngine,
+}
 
 
 @lru_cache
 def engine() -> Engine:
     """按 settings().sql_dialect 选引擎。lru_cache 是为了别每次查询都新建对象。"""
     dialect = settings().sql_dialect
+    # 领域包声明自己能跑在哪些方言上；没声明、或者不在列表里，启动就报错（fail-closed），
+    # 不要等查到一半才发现"化工的视图在 DuckDB 里不存在"。
+    allowed = domain().config.get("dialects")
+    if not allowed or dialect not in allowed:
+        raise ValueError(
+            f"领域包 {domain().id} 支持的方言是 {allowed}，当前 CHEMQ_SQL_DIALECT={dialect!r}"
+        )
     try:
         return _ENGINES[dialect]()
     except KeyError:
         raise ValueError(
             f"未知的 CHEMQ_SQL_DIALECT={dialect!r}，可选：{sorted(_ENGINES)}"
         ) from None
+
+
+@lru_cache
+def kb_engine() -> Engine:
+    """知识库固定使用 PostgreSQL（pgvector），不跟随业务取数引擎切换。"""
+    return PostgresEngine()
 
 
 # --- 下面三个是给调用方的门面，签名和 W1 时一模一样，所以 text2sql / pipeline 不用改 ---

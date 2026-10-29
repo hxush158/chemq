@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import settings
-from .db import run_query
+from .db import kb_engine
 from .domain import domain
 from .schemas import Citation
 from .textseg import identifiers, to_tsquery_literal
@@ -141,7 +141,7 @@ def hybrid_search(
         "n_bm": n if use_bm else 0,
         "top_k": s.rag_top_k if top_k is None else top_k,
     }
-    return [Hit(**r) for r in run_query(HYBRID_SQL, params=params)]
+    return [Hit(**r) for r in kb_engine().run_query(HYBRID_SQL, params=params)]   # 知识库固定在 Postgres
 
 
 GLOSSARY_PATH = domain().glossary_path

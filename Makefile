@@ -17,7 +17,7 @@ SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
 
 .PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -173,3 +173,6 @@ lint:
 clean:           ## 清掉缓存和临时产物
 	rm -rf ai/.venv ai/.pytest_cache ai/.ruff_cache eval-report*.json
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+duckdb-serve:    ## 生成 NZ 的 DuckDB 服务库（只含白名单对象，按 as_of 截断并核对快照）
+	CHEMQ_DOMAIN=nz_power uv run --project ai --quiet python scripts/build_duckdb_serving.py

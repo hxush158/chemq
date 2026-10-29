@@ -54,6 +54,12 @@ def check(
     只有「解析」和「生成」两端需要知道方言，这正是当初不用正则的回报。
     """
     dialect = dialect or settings().sql_dialect
+    try:
+        tokens = SENSITIVE_TOKENS_BY_DIALECT[dialect]
+    except KeyError:
+        raise ValueError(
+            f"sqlguard 没有 {dialect!r} 的敏感 token 表，可选：{sorted(SENSITIVE_TOKENS_BY_DIALECT)}"
+        ) from None
     violations: list[str] = []
 
     try:
@@ -100,7 +106,7 @@ def check(
         )
 
     lowered = sql.lower()
-    for token in SENSITIVE_TOKENS_BY_DIALECT.get(dialect, SENSITIVE_TOKENS):
+    for token in tokens:
         if token in lowered:
             violations.append(f"包含敏感操作: {token.strip()}")
 

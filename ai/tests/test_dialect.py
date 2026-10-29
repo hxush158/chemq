@@ -8,7 +8,7 @@ sqlglot 的 AST 是方言无关的（exp.Select 就是 exp.Select），
 import pytest
 
 from chemq.config import settings
-from chemq.db import _ENGINES, DorisEngine, PostgresEngine
+from chemq.db import _ENGINES, DorisEngine, DuckDBEngine, PostgresEngine
 from chemq.sqlguard import SENSITIVE_TOKENS_BY_DIALECT, check
 from chemq.text2sql import DIALECT_PROFILE, system_role
 
@@ -61,14 +61,16 @@ def test_whitelist_needs_no_change_across_dialects():
 def test_sensitive_tokens_are_per_dialect():
     pg = SENSITIVE_TOKENS_BY_DIALECT["postgres"]
     doris = SENSITIVE_TOKENS_BY_DIALECT["doris"]
+    duckdb = SENSITIVE_TOKENS_BY_DIALECT["duckdb"]
 
-    # Postgres 的拖库通道在 Doris 上不存在，反之亦然
+    # 不同引擎的敏感函数和语句写法不同，分别维护拦截规则。
     assert "pg_read_file" in pg and "pg_read_file" not in doris
     assert "into outfile" in doris and "into outfile" not in pg
+    assert "read_csv" in duckdb and "read_csv" not in pg and "read_csv" not in doris
 
     # 两边都得拦的
     for common in ("information_schema", "set role"):
-        assert common in pg and common in doris
+        assert common in pg and common in doris and common in duckdb
 
 
 @pytest.mark.parametrize("sql", [
@@ -82,26 +84,54 @@ def test_doris_specific_exfiltration_blocked(sql):
     assert not check(sql, ALLOWED, max_rows=500, dialect="doris").ok, sql
 
 
+# NZ 的白名单。名字不要叫 ALLOWED：文件开头已经有一个 ALLOWED（化工的），
+# 重名会覆盖它，前面的测试会跟着出错（上一轮就是这个问题）。
+NZ_ALLOWED = ("main.mart_current_price", "main.mart_daily_price", "main.v_dim_node")
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT * FROM read_csv('/etc/passwd')",
+    "SELECT * FROM read_parquet('s3://bucket/x.parquet')",
+    "SELECT * FROM read_text('/etc/passwd')",
+    "SELECT * FROM glob('/*')",
+    "SELECT * FROM '/etc/passwd'",                                       # 直接把字符串当文件查
+    "SELECT getenv('HOME')",
+    "SELECT * FROM duckdb_settings()",
+    "SELECT * FROM main.mart_daily_price, read_csv('/etc/passwd')",     # 夹在正常查询里
+])
+def test_duckdb_specific_exfiltration_blocked(sql):
+    assert not check(sql, NZ_ALLOWED, max_rows=500, dialect="duckdb").ok, sql
+
+
+def test_duckdb_plain_select_passes():
+    v = check("SELECT trading_date, avg_price FROM main.mart_daily_price",
+              NZ_ALLOWED, max_rows=500, dialect="duckdb")
+    assert v.ok and "LIMIT" in v.rewritten_sql.upper()
+
+
 # ---------- ④ prompt 按方言渲染 ----------
 
 def test_system_role_renders_per_dialect():
     pg = system_role("postgres")
     doris = system_role("doris")
+    duckdb = system_role("duckdb")
 
     assert "PostgreSQL 16" in pg and "to_char" in pg
     assert "Apache Doris" in doris and "date_format" in doris
+    assert "DuckDB" in duckdb and "strftime" in duckdb
 
     # 最容易犯的错是维护两份 prompt 然后漂移。模板只有一份，所以
     # 除了方言相关的那几处，其余内容必须完全一致。
     assert pg.count("\n") == doris.count("\n")
+    assert pg.count("\n") == duckdb.count("\n")
     for rule in ("只能 SELECT", "指标口径必须引用指标字典", "不要把整张排名表甩给用户"):
-        assert rule in pg and rule in doris
+        assert rule in pg and rule in doris and rule in duckdb
 
 
 def test_unknown_dialect_fails_loudly():
     with pytest.raises(ValueError):
         system_role("mysql")
-    assert set(DIALECT_PROFILE) == {"postgres", "doris"}
+    assert set(DIALECT_PROFILE) == {"postgres", "doris", "duckdb"}
 
 
 # ---------- ⑤ 未实现的引擎必须响亮地失败 ----------
@@ -117,6 +147,12 @@ def test_doris_engine_raises_instead_of_returning_empty():
         e.readonly_cursor(scope="华南")
 
 
+def test_sqlguard_unknown_dialect_fails_loudly():
+    with pytest.raises(ValueError, match="mysql"):
+        check("SELECT 1 FROM chem.v_plant_daily", ALLOWED, dialect="mysql")
+
+
 def test_engine_registry():
     assert _ENGINES["postgres"] is PostgresEngine
     assert _ENGINES["doris"] is DorisEngine
+    assert _ENGINES["duckdb"] is DuckDBEngine

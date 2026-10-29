@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     # 目标引擎。换引擎只改这一个值 —— 业务代码里不该出现 if dialect == ...
     # postgres：W1-W4 的学习环境（Docker 一键重建，评测跑得快，RAG 用 pgvector）
     # doris   ：W5 接入，客户侧的真实引擎（MySQL 协议，OLAP MPP）
-    sql_dialect: Literal["postgres", "doris"] = "postgres"
+    # duckdb  ：阶段二 W1，NZ 包的引擎
+    sql_dialect: Literal["postgres", "doris", "duckdb"] = "postgres"
 
     pg_dsn: str = "postgresql://chemq_app:chemq@localhost:5432/chemq"
     pg_dsn_readonly: str = "postgresql://chemq_ro_login:chemq@localhost:5432/chemq"
@@ -59,6 +60,10 @@ class Settings(BaseSettings):
     # 所以 W5 这里很可能要变成「一个大区一个 DSN」，见 docs/weekly/w5.md
     doris_dsn: str = ""
     doris_dsn_readonly: str = ""
+
+    # --- DuckDB ---
+    duckdb_path: str = ""      # 服务库（make duckdb-serve 生成），引擎只读连它
+    duckdb_source: str = ""    # dbt 产出的 DuckDB 文件路径（make duckdb-serve 的源）
 
     statement_timeout_ms: int = 8000
     max_rows: int = 500

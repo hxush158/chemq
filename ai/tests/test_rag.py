@@ -3,6 +3,8 @@
 W3 的主题是"每一环都要能单独测"。这里测的是切词、SQL 形状和无命中判断；
 召回效果（Recall@5）要等 ingest 之后在真实数据上测。
 """
+from types import SimpleNamespace as NS
+
 import pytest
 
 from chemq import rag
@@ -92,7 +94,7 @@ def test_hybrid_search_passes_params(monkeypatch):
         return [dict(chunk_id=1, doc_id="D1", title="能耗考核办法", content=DOC,
                      rrf=0.03, cos_sim=0.61, vec_rank=1, bm_rank=2)]
 
-    monkeypatch.setattr(rag, "run_query", fake_run_query)
+    monkeypatch.setattr(rag, "kb_engine", lambda: NS(run_query=fake_run_query))
     hits = hybrid_search("GB/T 2589", [0.0] * 1024, top_k=3)
     assert seen["tsq"] == "'2589' | 'gb' | 'gb/t'"
     assert seen["emb"].startswith("[0,0,")
@@ -107,7 +109,12 @@ def test_hybrid_search_passes_params(monkeypatch):
 def test_mode_switches_off_one_leg(monkeypatch, mode, n_vec, n_bm):
     """评测用：关掉一路 = 那一路 LIMIT 0，三种方式跑同一段 SQL。"""
     seen = {}
-    monkeypatch.setattr(rag, "run_query", lambda sql, scope=None, params=None: seen.update(params or {}) or [])
+
+    def fake_run_query(sql, scope=None, params=None):
+        seen.update(params or {})
+        return []
+
+    monkeypatch.setattr(rag, "kb_engine", lambda: NS(run_query=fake_run_query))
     hybrid_search("能耗怎么算", [0.0] * 1024, mode=mode)
     assert (seen["n_vec"], seen["n_bm"]) == (n_vec, n_bm)
 
@@ -195,3 +202,12 @@ def test_empty_is_no_hit():
 def test_default_threshold_comes_from_settings():
     assert is_no_hit([_hit(0.29)], "能耗怎么算")          # 默认 0.30（第 5 步标定）
     assert not is_no_hit([_hit(0.31)], "能耗怎么算")
+
+
+def test_kb_uses_postgres_even_when_dialect_is_duckdb(monkeypatch):
+    from chemq import db
+    from chemq.config import settings
+
+    monkeypatch.setattr(settings(), "sql_dialect", "duckdb")
+    db.kb_engine.cache_clear()          # kb_engine 有 lru_cache，先清掉，避免拿到别的测试缓存的结果
+    assert isinstance(db.kb_engine(), db.PostgresEngine)

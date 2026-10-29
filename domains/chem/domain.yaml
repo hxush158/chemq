@@ -3,6 +3,7 @@ id: chem
 locale: zh
 display_name: 示例化工
 
+dialects: [postgres, doris]
 # 语义层所在的 schema。sqlguard 的白名单、没写 schema 的表、search_path 都用它。
 schema: chem
 
