@@ -1,6 +1,7 @@
 """服务库构建测试；只使用 conftest.py 提供的临时源库。"""
 
 import importlib.util
+import shutil
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace as NS
@@ -190,3 +191,22 @@ def test_published_database_works_with_engine(builder, publish_env, monkeypatch)
             {"node_id": 2, "first_seen_date": date(2026, 6, 24)},
         ]
     )
+
+# 7. 源库文件名会被当成库名拼进 SQL：不是合法标识符就直接拒绝
+def test_source_name_must_be_valid_identifier(builder, tiny_source_db, tmp_path):
+    bad = tmp_path / "bad-name.duckdb"          # 横线不是合法标识符
+    shutil.copy(tiny_source_db, bad)
+    with pytest.raises(ValueError, match="库名"):
+        builder.build(bad, tmp_path / "out.duckdb", OBJECTS, AS_OF)
+
+
+# 8. 源库和临时库同名，挂载时会冲突：在连接之前就拦下
+def test_source_and_tmp_cannot_share_name(builder, tiny_source_db, tmp_path):
+    src = tmp_path / "a" / "serving.duckdb"
+    src.parent.mkdir()
+    shutil.copy(tiny_source_db, src)
+    out = tmp_path / "b" / "serving.duckdb"
+    out.parent.mkdir()
+    with pytest.raises(ValueError, match="同名"):
+        builder.build(src, out, OBJECTS, AS_OF)
+    assert not out.exists()                      # 没有创建任何文件

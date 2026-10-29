@@ -48,7 +48,7 @@ def tiny_source_db(tmp_path) -> Path:
         con.execute("""
             CREATE VIEW v_dim_node AS
             SELECT node_id, first_seen_date
-            FROM fact_private
+            FROM source.main.fact_private
         """)
 
     finally:
