@@ -1,0 +1,31 @@
+# Short English phrases used in prompts. Slot values {{name}} come from the domain pack's domain.yaml prompt_slots;
+# dialect-specific ones (ENGINE_NAME, MONTH_FMT) come from chemq/dialects.py. Keys must match prompts/zh/strings.yaml.
+router_examples_title: '# Routing examples'
+router_example_label: Example
+router_example_question: 'User question: '
+router_example_plan: 'Parsed plan: '
+tool_list_metrics: Returns the metric dictionary and the semantic catalog (which views exist, their columns, dimension values). Call this before writing SQL.
+tool_run_sql: |-
+  Run one read-only SQL query ({{ENGINE_NAME}}). Only the views and dimension tables in the semantic catalog can be queried; a LIMIT is added automatically. Returns ok/rows; if ok=false, read violations or error, fix the SQL and retry.
+  Result contract (the result must be readable by people and comparable by programs):
+  1. Format month columns as {{MONTH_FMT}}, not as a date; do not add a month column unless the question asks for a monthly breakdown.
+  2. "Which / who … highest / lowest" returns only that 1 row (sort, then LIMIT 1); "top N" returns N rows. Take the sort direction from the question.
+  3. Period-over-period / year-over-year / two-period comparison: return the raw value of each period as its own row, not one row with a difference.
+  4. Return only the columns asked for; compute ratios and averages in SQL as "sum first, then divide".
+tool_search: Search {{kb_scope}}. found=false means the knowledge base has nothing relevant.
+mcp_instructions: 'Read-only query tools for {{data_name}}. Call list_metrics for metric definitions and the semantic catalog before writing SQL; numbers may only come from run_semantic_query results; use search_knowledge for rules and definitions, and if found=false say plainly that the knowledge base has nothing on it.'
+
+# ---- Semantic catalog (used by scripts/build_catalog.py to generate semantic_catalog.md) ----
+catalog_title: '# Semantic catalog'
+catalog_coverage: 'Data coverage: {{start}} ~ {{end}} (daily grain).'
+catalog_scope_note: 'Only the views and dimension tables listed below can be queried (schema {{schema}}). Tables and columns not listed do not exist — do not guess.'
+catalog_views: '## Views'
+catalog_dims: '## Dimension tables'
+catalog_columns: 'Columns: '
+catalog_column: '{{name}} ({{type}})'
+catalog_column_sep: ', '
+catalog_values: '## Dimension values'
+catalog_values_note: 'When filtering by name, use only these exact values (character for character), or the corresponding ID; do not abbreviate and do not use LIKE.'
+
+# ---- "Data coverage" in prompts (router.data_range()) ----
+data_range: '{{start}} to {{end}}'

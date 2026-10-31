@@ -1,9 +1,9 @@
+import os
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import os
-import re
 
 import duckdb
 

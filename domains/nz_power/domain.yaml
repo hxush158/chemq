@@ -8,6 +8,12 @@ dialects: [duckdb]
 catalog:
   views: [mart_current_price, mart_daily_price, v_dim_node]
   dims: []
+  # 数据覆盖区间按哪一列算（coverage.yaml、Router 的 data_range）
+  date_column: {relation: mart_daily_price, column: trading_date}
+  # 维度取值：节点名称、岛屿、区域都是 NULL，用户只能报节点 id，所以 246 个 id 全列出来
+  values:
+    - title: Node (node_id)
+      sql: SELECT node_id, first_seen_date FROM v_dim_node ORDER BY 1
 
 eval:
   as_of: "2026-09-30"
@@ -20,3 +26,25 @@ serving:
     mart_current_price: trading_date
     mart_daily_price: trading_date
     v_dim_node: first_seen_date
+
+# 不写 scope：NZ 数据没有按范围隔离，DuckDBEngine 收到任何 scope 都会拒绝。
+
+# 填进通用提示词模板（ai/src/chemq/prompts/en/）的空位 {{name}}。键和 domains/chem/domain.yaml 一一对应。
+prompt_slots:
+  system_name: NZ electricity market analysis system
+  assistant_name: NZ electricity market analysis assistant
+  data_name: NZ wholesale electricity price data
+  analysis_scope: NZ wholesale electricity prices
+  agent_question_scope: questions about NZ wholesale electricity prices
+  # NZ 还没有知识库。第 4 项让 Agent 去掉 search_knowledge 之后，这一项可能就不需要了
+  kb_scope: the knowledge base (this domain has no documents yet)
+  knowledge_topics: metric definitions and market conventions
+  knowledge_example: what does an interim price mean
+  out_of_scope_examples: volume-weighted prices, demand, generation, prices by island or region
+  lookalike_note: |2-
+      ⚠ Judge only by whether the metric is in the dictionary, not by the wording: "price spike" and "peak price"
+        are aliases of the daily maximum price and are supported; prices "by island", "by region" or a "national price" are not.
+  no_hardcode_examples: the number of trading periods in a day or a list of node ids
+  filter_dimensions: node_id
+  breakdown_example: a breakdown by node or by trading period
+  kb_ref_example: KB-NZ-001#1

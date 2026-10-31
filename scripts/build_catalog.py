@@ -19,33 +19,22 @@ text2sql 提示里给模型看的就是这份目录；Router / Agent 提示里�
 用法: make catalog（make seed 最后也会自动跑）。在 ai/ 的 uv 环境里跑，要 import chemq。
 """
 import os
-import shlex
-import subprocess
 
 import yaml
 
+from chemq.db import engine
 from chemq.domain import domain
 from chemq.prompts import render, string
+from chemq.result_text import row_text
 
-DSN = os.environ.get("CHEMQ_PG_DSN", "postgresql://postgres:chemq@localhost:5432/chemq")
-PSQL = shlex.split(os.environ.get("CHEMQ_PSQL", "psql"))
 GENERATED = "<!-- 自动生成：scripts/build_catalog.py（make catalog / make seed）。不要手改。 -->"
 
 
-def _with_search_path(dsn: str, schema: str) -> str:
-    """同 ai/evals/build_golden.py：search_path 写进连接串，docker compose exec 也有效。"""
-    opt = f"options=-csearch_path%3D{schema}%2Cpublic"
-    if "options=" in dsn:
-        return dsn
-    return dsn + ("&" if "?" in dsn else "?") + opt
-
-
-def q(sql: str) -> list[list[str]]:
-    proc = subprocess.run([*PSQL, _with_search_path(DSN, domain().schema), "-tA", "-F", "\t", "-c", sql],
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"SQL 执行失败: {proc.stderr.strip()}\n{sql}")
-    return [line.split("\t") for line in proc.stdout.strip().splitlines() if line]
+def q(sql: str, *, skip_null: bool = False) -> list[list[str]]:
+    return [
+        row_text(row, skip_null=skip_null)
+        for row in engine().run_query(sql)
+    ]
 
 
 def _in(names: list[str]) -> str:
@@ -64,11 +53,16 @@ def build() -> tuple[str, dict[str, str]]:
         "ORDER BY table_name, ordinal_position"
     ):
         cols[t].append((c, typ))
-    comments = {r[0]: (r[1] if len(r) > 1 else "") for r in q(
-        "SELECT c.relname, coalesce(obj_description(c.oid, 'pg_class'), '') "
-        "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-        f"WHERE n.nspname='{schema}' AND c.relname IN ({_in(names)})"
-    )}
+    comments: dict[str, str] = {}
+    if engine().dialect == "postgres":
+        comments = {
+            r[0]: r[1]
+            for r in q(
+                "SELECT c.relname, coalesce(obj_description(c.oid, 'pg_class'), '') "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                f"WHERE n.nspname='{schema}' AND c.relname IN ({_in(names)})"
+            )
+        }
     dc = cat["date_column"]
     lo, hi = q(f"SELECT min({dc['column']}), max({dc['column']}) FROM {dc['relation']}")[0]
 
@@ -104,7 +98,7 @@ def build() -> tuple[str, dict[str, str]]:
 
     out += ["", string("catalog_values"), string("catalog_values_note")]
     for v in cat["values"]:
-        rows = q(v["sql"])
+        rows = q(v["sql"], skip_null=True)
         out += ["", f"### {v['title']}"]
         out += ["- " + " · ".join(r) for r in rows]
     return "\n".join(out) + "\n", {"start": lo, "end": hi}

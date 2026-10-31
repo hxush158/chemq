@@ -1,0 +1,53 @@
+# NZ 电力的评测题。字段和生成方式同 domains/chem/eval/cases.yaml：
+# 标准答案不手填，make golden 用服务库执行参考 SQL，生成 golden.jsonl（第 2 项让 build_golden 走引擎之后才能跑）。
+#
+# 出题约束（docs/11 第八节）：
+#   - 节点级题避开 WHU1101、OHG1101（数据开始后才出现、首日只有部分时段），除非题目就是考新节点
+#   - 查出 0 行的题（OHG1101 在 6 月 24 日以前）先不出：要等"没有数据"的提示做好（W3 待办）
+#   - 现有数据全是 final，出不了 interim 相关的题
+#   - 不要和 router_examples.yaml 用同一个节点 + 日期
+
+- set: golden
+  id: N001
+  week: 1
+  difficulty: easy
+  intent: metric_query
+  metrics: [Daily average price]
+  question: What was the daily average price at OTA2201 on 20 September 2026?
+  sql: SELECT avg_price AS v FROM mart_daily_price WHERE node_id = 'OTA2201' AND trading_date = DATE '2026-09-20'
+- set: golden
+  id: N002
+  week: 1
+  difficulty: medium
+  intent: metric_query
+  metrics: [Number of priced periods]
+  question: How many trading periods did HAY2201 have on 5 April 2026?
+  sql: SELECT period_count AS v FROM mart_daily_price WHERE node_id = 'HAY2201' AND trading_date = DATE '2026-04-05'
+  note: 夏令时结束那天，答案是 50，不是 48
+- set: golden
+  id: N003
+  week: 1
+  difficulty: medium
+  intent: metric_query
+  metrics: [Period price]
+  question: On 26 September 2026, what was the highest half-hourly price at BEN2201, and in which trading period?
+  sql: SELECT trading_period AS k, price_nzd_per_mwh AS v FROM mart_current_price WHERE node_id = 'BEN2201' AND trading_date = DATE '2026-09-26' ORDER BY v DESC LIMIT 1
+  note: 这天上游同时有 interim 和 final 两份文件，mart_current_price 取 final；直接查 fact 表会重复
+- set: golden
+  id: N004
+  week: 1
+  difficulty: medium
+  intent: metric_query
+  metrics: [First seen date]
+  question: Which nodes first appeared in the data between April and September 2026?
+  sql: SELECT node_id AS k, first_seen_date AS v FROM v_dim_node WHERE first_seen_date BETWEEN DATE '2026-04-01' AND DATE '2026-09-30' ORDER BY 1
+  note: 答案是 OHG1101、WHU1101。first_seen_date 为 NULL 的是数据开始时就有的节点，不算
+- set: golden
+  id: N005
+  week: 1
+  difficulty: easy
+  intent: out_of_scope
+  metrics: []
+  question: What was the average electricity price in the North Island last week?
+  assert_type: refuse
+  note: 节点的岛屿、区域都是 NULL，按岛屿汇总答不了；也不能拿全部节点的平均价顶替

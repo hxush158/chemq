@@ -1,0 +1,116 @@
+# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ 7f49ea6
+# sha256 88f8d83949072cdbf69c805561c01660e42f10accadba34e1cb59dec202fc795  (do not edit here: change it upstream, then make sync-nz-metrics)
+# NZ electricity price metrics. Query only the views listed under `views`; never query fact_* or dim_* tables.
+version: "2026-10"
+owner: "nz-power-pipeline"
+
+conventions:
+  trading_day: "A trading day is a New Zealand calendar date (Pacific/Auckland)."
+  trading_period: "Each trading day is split into 30-minute trading periods, numbered from local midnight. A normal day has 48; the day daylight saving ends (first Sunday of April) has 50; the day it starts (last Sunday of September) has 46."
+  local_time: "period_start_local is New Zealand wall-clock time without a time zone. On the day daylight saving ends, 02:00-03:00 local time occurs twice, so local time does not identify a period uniquely; use trading_date + trading_period."
+  price_unit: "NZD per MWh, 2 decimal places. Negative prices are real data; do not filter them out."
+  price_version: "A period and node can have an interim price first and a final price later. Use mart_current_price, which already picks final when available and interim otherwise."
+  node_id: "Node ids are upper-case strings such as ABY0111, not numbers."
+  not_available: "There is no volume, demand or generation data yet, so volume-weighted prices cannot be computed. Node name, island and region are NULL, so results cannot be grouped by island or region."
+
+views:
+  - view: mart_current_price
+    grain: "one row per trading period per node"
+    description: "Best available price for each period and node: final if it exists, otherwise interim."
+    keys: [trading_date, trading_period, node_id]
+  - view: mart_daily_price
+    grain: "one row per trading day per node"
+    description: "Daily summary built on mart_current_price: average, minimum and maximum price, number of periods, number of interim periods."
+    keys: [trading_date, node_id]
+  - view: v_dim_node
+    grain: "one row per node"
+    description: "Node dimension plus the first trading day the node appears in the data."
+    keys: [node_id]
+
+metrics:
+  - name: Period price
+    en: price_nzd_per_mwh
+    aliases: ["price", "spot price", "half-hourly price"]
+    unit: NZD/MWh
+    view: mart_current_price
+    column: price_nzd_per_mwh
+    definition: Price of one node in one 30-minute trading period, using the best available version (final if it exists, otherwise interim).
+    pitfalls:
+      - "Prices can be negative; do not filter them."
+      - "An interim price may be revised later; say so when answering about recent data."
+      - "Do not query fact_electricity_price directly: a period can have both a final and an interim row, which double-counts."
+
+  - name: Price version
+    en: price_version
+    aliases: ["final or interim"]
+    unit: ""
+    view: mart_current_price
+    column: price_version
+    definition: Version of the selected price, either final or interim. It is interim only when no final price exists.
+    pitfalls:
+      - "Interim means the price may still be revised, not that the data is wrong."
+
+  - name: Daily average price
+    en: avg_price
+    aliases: ["average price", "daily average", "daily price"]
+    unit: NZD/MWh
+    view: mart_daily_price
+    column: avg_price
+    definition: Simple average of a node's period prices within one trading day, rounded to 2 decimals. Every period is 30 minutes, so the simple average equals the time-weighted average.
+    pitfalls:
+      - "Not volume-weighted: there is no volume data, so a volume-weighted average price cannot be answered."
+      - "Averaging across nodes has no clear business meaning; do not present it as a national price."
+      - "When averaging several days, days with 46 or 50 periods (daylight saving changes) make an average of daily averages differ slightly from the true per-period average; for exact multi-day averages, average mart_current_price directly."
+      - "If interim_period_count is greater than 0 for that day, the daily average is not final yet."
+
+  - name: Daily minimum price
+    en: min_price
+    aliases: ["lowest price", "daily low"]
+    unit: NZD/MWh
+    view: mart_daily_price
+    column: min_price
+    definition: Lowest period price of a node within one trading day.
+    pitfalls:
+      - "Can be negative."
+
+  - name: Daily maximum price
+    en: max_price
+    aliases: ["highest price", "peak price", "daily high", "price spike"]
+    unit: NZD/MWh
+    view: mart_daily_price
+    column: max_price
+    definition: Highest period price of a node within one trading day.
+    pitfalls:
+      - "It describes a single 30-minute period, not the price level of the whole day; for a question about a price surge, also look at the daily average."
+
+  - name: Number of priced periods
+    en: period_count
+    aliases: ["number of trading periods"]
+    unit: periods
+    view: mart_daily_price
+    column: period_count
+    definition: Number of trading periods with a price for a node on a trading day. 48 on a normal day, 50 when daylight saving ends, 46 when it starts.
+    pitfalls:
+      - "A count below the expected number for that day means data is missing; say so before answering."
+      - "Do not assume every day has 48 periods."
+
+  - name: Number of interim periods
+    en: interim_period_count
+    aliases: ["interim periods"]
+    unit: periods
+    view: mart_daily_price
+    column: interim_period_count
+    definition: Number of periods on a trading day that still use an interim price for a node. 0 means the daily average is based entirely on final prices.
+    pitfalls:
+      - "Use this to decide whether a daily average is final; do not infer it from the date."
+
+  - name: First seen date
+    en: first_seen_date
+    aliases: ["first appeared", "new node"]
+    unit: date
+    view: v_dim_node
+    column: first_seen_date
+    definition: Earliest trading day on which the node appears in the data.
+    pitfalls:
+      - "NULL means the node already existed at the start of the data (a baseline node) and its real start date is unknown; it does not mean the node has no data."
+      - "It is the first date in this data set, not necessarily when the node actually began operating."

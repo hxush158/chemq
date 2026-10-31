@@ -11,13 +11,21 @@ PSQL       ?= docker compose exec -T db psql
 # Python 服务本身读 .env 里的 CHEMQ_DOMAIN（默认 chem）。两边要一致。
 DOMAIN     ?= chem
 DOMAIN_DIR := domains/$(DOMAIN)
+QUERY_ENV = CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PG_DSN_READONLY="$(DSN_RO)"
+
+ifeq ($(DOMAIN),nz_power)
+QUERY_ENV += CHEMQ_SQL_DIALECT=duckdb CHEMQ_DUCKDB_PATH="$(CURDIR)/domains/nz_power/data/serving.duckdb"
+endif
+
 # SQL 文件的路径。默认是容器内的挂载点（docker-compose.yml 把 domains/chem/data/ 挂到了这里）。
 # 如果你把 PSQL 改成本机 psql，把 SQLDIR 一起改成 $(DOMAIN_DIR)/data
 SQLDIR     ?= /docker-entrypoint-initdb.d
 PY         ?= uv run --quiet --no-project --with pyyaml python
+# nz-power-pipeline 仓库（NZ 领域包的指标字典从这里同步）
+NZ_REPO    ?= $(HOME)/Projects/nz-power-pipeline
 
 .PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve sync-nz-metrics check-nz-metrics
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -71,18 +79,17 @@ seed:            ## 重建数据 + 重算评测集标准答案（改了 domains/
 		-f $(SQLDIR)/02_seed.sql \
 		-f $(SQLDIR)/03_semantic_views.sql \
 		-f $(SQLDIR)/04_roles.sql
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" uv run --project ai --quiet python scripts/build_catalog.py
+	$(MAKE) golden catalog
 	@echo "✓ 数据、评测集标准答案、语义层目录已重建（知识库被清空了，记得 make ingest）"
 
 cases:           ## 列出评测题（一题一行）  用法: make cases  或  make cases SET=holdout
 	@CHEMQ_DOMAIN="$(DOMAIN)" $(PY) ai/evals/list_cases.py "$(SET)"
 
 golden:          ## 只重算评测集标准答案（领域包 eval/ 下的 golden + holdout），不动数据库数据
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" $(PY) ai/evals/build_golden.py
+	$(QUERY_ENV) uv run --project ai --extra db --quiet python ai/evals/build_golden.py
 
-catalog:         ## 只重新生成语义层目录 + 数据覆盖区间（domains/<领域>/semantic_catalog.md、coverage.yaml）
-	CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PSQL="$(PSQL)" CHEMQ_PG_DSN="$(DSN)" uv run --project ai --quiet python scripts/build_catalog.py
+catalog:         ## 只重新生成语义层目录 + 数据覆盖区间
+	$(QUERY_ENV) uv run --project ai --extra db --quiet python scripts/build_catalog.py
 
 reset:           ## 连 volume 一起删掉重来（数据全没，慎用）
 	docker compose down -v
@@ -176,3 +183,9 @@ clean:           ## 清掉缓存和临时产物
 
 duckdb-serve:    ## 生成 NZ 的 DuckDB 服务库（只含白名单对象，按 as_of 截断并核对快照）
 	CHEMQ_DOMAIN=nz_power uv run --project ai --quiet python scripts/build_duckdb_serving.py
+
+sync-nz-metrics: ## 把 nz-power-pipeline 的指标字典复制进 domains/nz_power/（上游有未提交改动会拒绝）
+	$(PY) scripts/sync_nz_metrics.py --repo $(NZ_REPO)
+
+check-nz-metrics: ## 核对 NZ 指标字典：没被手改、和上游一致（找不到上游只核对前者）
+	$(PY) scripts/sync_nz_metrics.py --repo $(NZ_REPO) --check

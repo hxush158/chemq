@@ -155,7 +155,7 @@ critic:
   assert: {type: citation, must_contain: [折标, GB/T 2589, 合格产量]}
 ```
 
-`build_golden.py`：读 cases.yaml → 用当前引擎执行参考 SQL → 写 golden.jsonl / holdout.jsonl，记录 as_of 和 snapshot。
+`build_golden.py`：读 cases.yaml → 用当前引擎执行参考 SQL → 写 golden.jsonl / holdout.jsonl
 
 ## 七、W1 步骤（每步化工评测不退步）
 
@@ -205,4 +205,4 @@ critic:
 - 数据覆盖目前按 min~max 算，假定连续。NZ 现在连续；以后若出现缺日，覆盖改成记日期集合
 - DuckDB 没有账号权限，`main` 里的 `fact_*` / `dim_*` / `stg_*` 只靠 sqlguard 白名单拦 —— 第 4 步让 DuckDBEngine 只暴露 3 个对象
 - dbt 写库时 DuckDB 文件打不开：评测 / 演示时别同时跑 dbt
-- `build_golden` 生成前重算行数和价格总和，和 `eval.snapshot` 比对，对不上就停
+- 快照校验由 make duckdb-serve 在发布服务库前保证：核对对象集合、行数和价格总和，通过后才替换 serving.duckdb。build_golden 使用该流程生成的服务库，不重复校验；修改 eval.as_of 或 eval.snapshot 后必须重建服务库。

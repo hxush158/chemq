@@ -1,0 +1,38 @@
+# Router 的 few-shot 示例（NZ 电力）。格式同 domains/chem/router_examples.yaml。
+# ⚠ 不要写评测题原话，也别用评测题的节点 + 日期组合（eval/cases.yaml 用了 OTA2201 / HAY2201 / BEN2201）。
+# 指标名用 metric_dictionary.yaml 里的 name。基准时间的写法要和 pipeline 给 Router 的前缀一致（第 5 项改成按语言取）。
+- note: '(one node, one trading day)'
+  question: |-
+    Base date: 2026-09-30
+    User question: What was the daily average price at ISL2201 on 15 September?
+  plan: '{"intent": "metric_query", "metrics": ["Daily average price"], "filters": {"node_id": "ISL2201"}, "time_range": {"start": "2026-09-15", "end": "2026-09-15", "grain": "day"}, "needs_knowledge": false, "reasoning": "One node on one trading day. \"15 September\" takes the base year: 2026-09-15."}'
+- note: '(no time given: use the base month)'
+  question: |-
+    Base date: 2026-09-30
+    User question: Show me the average price at WKM2201.
+  plan: '{"intent": "metric_query", "metrics": ["Daily average price"], "filters": {"node_id": "WKM2201"}, "time_range": {"start": "2026-09-01", "end": "2026-09-30", "grain": "month"}, "needs_knowledge": false, "reasoning": "No time given, so use the base month 2026-09 and still fill it into time_range."}'
+- note: '(last N days: count the days, the base date is included)'
+  question: |-
+    Base date: 2026-09-30
+    User question: What was the highest price at ISL2201 over the last 7 days?
+  plan: '{"intent": "metric_query", "metrics": ["Daily maximum price"], "filters": {"node_id": "ISL2201"}, "time_range": {"start": "2026-09-24", "end": "2026-09-30", "grain": "day"}, "needs_knowledge": false, "reasoning": "Last 7 days including the base date: 24, 25, 26, 27, 28, 29, 30 — 7 days, matching the 7 in the question. Start is the base date minus 6 days, not minus 7."}'
+- note: '(two-period comparison: the other period goes into compare_range; whether it has data is decided by the system)'
+  question: |-
+    Base date: 2026-09-30
+    User question: Was the average price at WKM2201 higher in August than in July?
+  plan: '{"intent": "metric_query", "metrics": ["Daily average price"], "filters": {"node_id": "WKM2201"}, "time_range": {"start": "2026-08-01", "end": "2026-08-31", "grain": "month"}, "compare_range": {"start": "2026-07-01", "end": "2026-07-31", "grain": "month"}, "needs_knowledge": false, "reasoning": "The period asked about is August 2026; \"than in July\" is the comparison period, 2026-07, so it goes into compare_range."}'
+- note: '(daylight saving day: only extract the day; the number of periods comes from the data)'
+  question: |-
+    Base date: 2026-09-30
+    User question: How many trading periods did ISL2201 have on 27 September?
+  plan: '{"intent": "metric_query", "metrics": ["Number of priced periods"], "filters": {"node_id": "ISL2201"}, "time_range": {"start": "2026-09-27", "end": "2026-09-27", "grain": "day"}, "needs_knowledge": false, "reasoning": "One node on one trading day, 2026-09-27. Do not assume 48: the count is read from the data."}'
+- note: '(refuse: the metric needs volume data, which does not exist)'
+  question: |-
+    Base date: 2026-09-30
+    User question: What was the volume-weighted average price at WKM2201 last month?
+  plan: '{"intent": "out_of_scope", "metrics": ["volume-weighted average price"], "needs_knowledge": false, "reasoning": "There is no volume data, so a volume-weighted price is not in the metric dictionary. The daily average price is a simple average and must not be used instead."}'
+- note: '(refuse: not price data at all)'
+  question: |-
+    Base date: 2026-09-30
+    User question: How much electricity did New Zealand use yesterday?
+  plan: '{"intent": "out_of_scope", "metrics": ["demand"], "needs_knowledge": false, "reasoning": "Demand and generation are not in the metric dictionary; only prices are available."}'
