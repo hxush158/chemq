@@ -18,6 +18,7 @@ import uuid
 from .coverage import check_time, load_coverage
 from .domain import domain
 from .kb_answer import answer_from_kb
+from .prompts import string
 from .router import plan  # 需要引入写好的 plan 函数
 from .schemas import Answer
 from .text2sql import Unanswerable, generate_and_run
@@ -31,7 +32,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
     
     # 调路由器拿 QueryPlan
     #result = plan(question)
-    result = plan(f"基准时间：{as_of}\n用户问题：{question}")
+    result = plan(string("router_user_message", extra={"as_of": as_of, "question": question}))
     query_plan = result.parsed
     
     # 判断是否拒答
@@ -92,8 +93,22 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
         sql, rows = run.sql, run.rows
         cost += run.cost_usd
 
+    has_kb = domain().has_kb
+    if not has_kb and query_plan.intent == "knowledge_lookup":
+        return Answer(
+            trace_id=trace_id,
+            answer=string("kb_unavailable"),
+            intent=query_plan.intent,
+            refused=True,
+            numbers_from_sql=False,
+            cost_usd=cost,
+            caveats=caveats,
+        )
+    if not has_kb and query_plan.intent == "mixed":
+        caveats.append(string("kb_explanation_unavailable"))
+
     # W3：知识类、混合类走知识库。混合类把 SQL 结果一起交给 Claude，数字只许照抄。
-    if query_plan.intent in ("knowledge_lookup", "mixed"):
+    if has_kb and query_plan.intent in ("knowledge_lookup", "mixed"):
         kb = answer_from_kb(question, sql_rows=rows if query_plan.intent == "mixed" else None)
         cost += kb.cost_usd
 

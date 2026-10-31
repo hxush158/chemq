@@ -64,12 +64,12 @@ def main() -> int:
     if args.cmd == "tokens":
         from .config import settings  # noqa: PLC0415
         from .llm import Llm, min_cache_tokens  # noqa: PLC0415
-        from .router import SYSTEM_ROLE, data_range, load_metric_dictionary  # noqa: PLC0415
+        from .router import SYSTEM_ROLE, data_range, metric_dictionary_block  # noqa: PLC0415
 
         llm = Llm()
         system = Llm.cached_system(
             SYSTEM_ROLE.replace("{DATA_RANGE}", data_range()),
-            "# 指标口径字典\n" + load_metric_dictionary(),
+            metric_dictionary_block(),
         )
         print("各模型下，当前 router 前缀的缓存可行性：\n")
         print(f"  {'模型':<32}{'前缀 tokens':>12}{'缓存下限':>10}   结论")

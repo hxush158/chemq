@@ -31,9 +31,40 @@ RUNTIME_SLOTS = frozenset({
     "start", "end",        # 数据覆盖区间（router.data_range、语义层目录）
     "schema",              # 语义层目录：schema 名
     "name", "type",        # 语义层目录：列名、列类型
+    "as_of", "question", "rows",  # 用户消息：基准日期、原话、SQL 结果
 })
 
 _SLOT = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+_SECTION_START = re.compile(r"\[\[if ([a-z_][a-z0-9_]*)\]\]")
+
+
+def select_sections(text: str, sections: dict[str, bool]) -> str:
+    """只认整行 [[if name]] / [[endif]]，不支持嵌套；先过滤，再填领域空位。"""
+    out: list[str] = []
+    active: str | None = None
+    keep = True
+    for line in text.splitlines(keepends=True):
+        marker = line.strip()
+        match = _SECTION_START.fullmatch(marker)
+        if match:
+            if active is not None:
+                raise ValueError("提示词条件块不支持嵌套")
+            active = match.group(1)
+            if active not in sections:
+                raise KeyError(f"没有提供提示词条件开关：{active}")
+            if not isinstance(sections[active], bool):
+                raise ValueError(f"提示词条件开关必须是 bool：{active}")
+            keep = sections[active]
+        elif marker == "[[endif]]":
+            if active is None:
+                raise ValueError("[[endif]] 没有对应的 [[if ...]]")
+            active = None
+            keep = True
+        elif keep:
+            out.append(line)
+    if active is not None:
+        raise ValueError(f"提示词条件块没有结束：{active}")
+    return "".join(out)
 
 
 def slot_names(text: str) -> set[str]:
@@ -78,9 +109,13 @@ def strings(locale: str) -> dict[str, str]:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def render(name: str, *, extra: dict[str, Any] | None = None, locale: str | None = None) -> str:
+def render(
+    name: str, *, extra: dict[str, Any] | None = None, locale: str | None = None,
+    sections: dict[str, bool] | None = None,
+) -> str:
     loc = _locale(locale)
-    return fill(template(name, loc), _slots(extra), where=f"prompts/{loc}/{name}.md")
+    text = select_sections(template(name, loc), sections or {})
+    return fill(text, _slots(extra), where=f"prompts/{loc}/{name}.md")
 
 
 def string(key: str, *, extra: dict[str, Any] | None = None, locale: str | None = None) -> str:

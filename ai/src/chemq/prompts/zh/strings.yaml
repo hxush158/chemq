@@ -29,3 +29,44 @@ catalog_values_note: 按名称过滤时只能用这里的原值（一字不差�
 
 # ---- 提示词里的"数据覆盖"（router.data_range()）----
 data_range: '{{start}} 至 {{end}}'
+
+# ---- 进模型的用户消息、字典标题、拒答标记、JSON Schema ----
+router_user_message: |-
+  基准时间：{{as_of}}
+  用户问题：{{question}}
+text2sql_user_question: '用户原始问题：{{question}}'
+text2sql_base_date: '基准时间：{{as_of}}'
+text2sql_plan_title: '查询计划（上游解析器给出；如果有 time_range，以它为准，不要根据原始问题重新推算日期）：'
+kb_sql_results: |-
+  数据库查询结果（系统已算好，照抄，不要重算）：
+  {{rows}}
+kb_user_question: '用户问题：{{question}}'
+metric_dictionary_title: '# 指标口径字典'
+marker_cannot_answer: '【无法回答】'
+marker_not_covered: '【资料未覆盖】'
+mcp_instructions_no_kb: '{{data_name}}的只读查询工具。写 SQL 之前先调 list_metrics 看指标口径和语义层目录；数字只能来自 run_semantic_query 的结果。本领域没有知识库，无法提供有资料依据的原因解释。'
+kb_unavailable: 本领域没有知识库，无法回答需要查阅资料的问题。
+kb_explanation_unavailable: 本领域没有知识库，无法提供有资料依据的原因解释。
+schema_query_plan: 把用户问题解析成结构化查询计划，不含 SQL。
+schema_sql_candidate: SQL 候选或明确的拒答原因。
+schema_time_start: ISO 日期 YYYY-MM-DD
+schema_time_end: ISO 日期 YYYY-MM-DD，闭区间
+schema_metrics: 指标字典中的标准指标名
+schema_dimensions: '如 {{dimension_examples}}'
+schema_compare_range: 同比/环比/两期对比时的对比期；问题里没有对比就是 null
+schema_needs_knowledge: 是否需要查制度/口径文档
+schema_reasoning: 一句话说明判断依据
+schema_sql: 只读 SQL。refuse_reason 非空时留空字符串。
+schema_refuse_reason: 只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所需时间段没有数据），此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。
+schema_metric_definitions_used: 引用了指标字典中的哪些口径条目
+schema_answer_intent: 路由判定的意图；evals 按它算 intent_acc
+schema_answer_refused: 是否拒答；evals 按它算 refuse_acc
+schema_answer_cost: 这一次问答累计的 API 成本
+schema_answer_numbers_from_sql: True 表示所有数字来自 SQL 执行结果，模型未参与算数
+
+# ---- Critic 的语言规则；正则用单引号保留反斜线 ----
+critic_date_pattern: '\d{4}\s*[-/年.]\s*\d{1,2}(\s*[-/月.]\s*\d{1,2}\s*日?)?|\d{4}\s*年|\d{1,2}\s*月(\s*\d{1,2}\s*日)?|\d{1,2}\s*日|[一二三四]?季度|Q[1-4]'
+critic_unit_after_pattern: '^\s*(次|个|台|家|吨|t|%|％|小时|天|笔|位|kWh|元)'
+critic_scale_after_pattern: '^\s*(万|亿)'
+critic_range_then_unit_pattern: '^[～~—至到]\s*-?\d[\d,]*(?:\.\d+)?\s*(万|亿)'
+critic_scale_factors: '{"万": 10000, "亿": 100000000}'

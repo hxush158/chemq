@@ -59,3 +59,33 @@ def test_router_example_numbers_follow_file_order():
     n = len(__import__("yaml").safe_load(domain().router_examples_path.read_text(encoding="utf-8")))
     assert f"[示例 {n}]" in router.FEW_SHOT_EXAMPLES
     assert f"[示例 {n + 1}]" not in router.FEW_SHOT_EXAMPLES
+
+
+@pytest.mark.parametrize("enabled, expected", [(True, "a\nb\nc"), (False, "a\nc")])
+def test_select_sections(enabled, expected):
+    text = "a\n[[if kb]]\nb\n[[endif]]\nc"
+    assert prompts.select_sections(text, {"kb": enabled}) == expected
+
+
+@pytest.mark.parametrize("text, switches, error", [
+    ("[[if kb]]\nx\n[[endif]]", {}, KeyError),
+    ("[[if kb]]\nx\n[[endif]]", {"kb": "false"}, ValueError),
+    ("[[if kb]]\nx", {"kb": True}, ValueError),
+    ("[[endif]]", {}, ValueError),
+    ("[[if kb]]\n[[if kb]]\nx\n[[endif]]\n[[endif]]", {"kb": False}, ValueError),
+])
+def test_invalid_sections_fail_loudly(text, switches, error):
+    with pytest.raises(error):
+        prompts.select_sections(text, switches)
+
+
+def test_sections_only_recognise_whole_lines():
+    text = "Keep inline [[if kb]] and [[endif]] literally."
+    assert prompts.select_sections(text, {}) == text
+
+
+def test_render_filters_sections_before_filling_slots(monkeypatch):
+    monkeypatch.setattr(prompts, "template", lambda *a: "kept\n[[if kb]]\n{{missing}}\n[[endif]]")
+    assert prompts.render("example", sections={"kb": False}) == "kept\n"
+    with pytest.raises(KeyError, match="missing"):
+        prompts.render("example", sections={"kb": True})

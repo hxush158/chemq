@@ -35,19 +35,21 @@ from . import critic, tools
 from .config import settings
 from .domain import domain
 from .kb_answer import NO_CITATION_TEXT
-from .prompts import render
+from .prompts import render, string
 from .schemas import Answer, Citation
 
 SERVER = "chemq"
-TOOL_NAMES = ("list_metrics", "run_semantic_query", "search_knowledge")
+TOOL_NAMES = ("list_metrics", "run_semantic_query") + (
+    ("search_knowledge",) if domain().has_kb else ()
+)
 ALLOWED = tuple(f"mcp__{SERVER}__{n}" for n in TOOL_NAMES)
-CANNOT_ANSWER = "【无法回答】"
+CANNOT_ANSWER = string("marker_cannot_answer")
 
 MAX_TURNS = 8
 MAX_BUDGET_USD = 0.10
 
 # 提示词正文在 prompts/<locale>/agent.md；{as_of}、{data_range} 是单花括号，orchestrate() 每次调用时才 format。
-SYSTEM_PROMPT = render("agent")
+SYSTEM_PROMPT = render("agent", sections={"kb": domain().has_kb})
 
 
 @dataclass
@@ -120,7 +122,10 @@ def build_tools(rec: Recorder, scope: str | None) -> list[Any]:
         rec.kb_hits.extend(r.get("hits", []))
         return _text(r)
 
-    return [list_metrics, run_semantic_query, search_knowledge]
+    registered = [list_metrics, run_semantic_query]
+    if domain().has_kb:
+        registered.append(search_knowledge)
+    return registered
 
 
 def make_hooks(rec: Recorder) -> dict[str, Any]:

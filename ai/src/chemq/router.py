@@ -66,12 +66,16 @@ def load_metric_dictionary() -> str:
     return raw
 
 
+def metric_dictionary_block() -> str:
+    return string("metric_dictionary_title") + "\n" + load_metric_dictionary()
+
+
 def plan(question: str, llm: Llm | None = None) -> LlmResult:
     llm = llm or Llm()
     system = Llm.cached_system(
         SYSTEM_ROLE.replace("{DATA_RANGE}", data_range()),
         FEW_SHOT_EXAMPLES,  # <-- 将 Few-shot 硬编码在 System 块中
-        "# 指标口径字典\n" + load_metric_dictionary(), # 最长、最稳定的字典放最后
+        metric_dictionary_block(),  # 最长、最稳定的字典放最后
     )
     return llm.parse(
         model=settings().model_router,

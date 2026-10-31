@@ -112,11 +112,18 @@ def _replace(path, text: str) -> None:
 
 def main() -> None:
     d = domain()
+    dialect = engine().dialect
+    if dialect == d.primary_dialect:
+        catalog_path = d.catalog_path
+    else:
+        catalog_path = d.catalog_path_for(dialect)
     text, coverage = build()                          # 先在内存里生成完，再一次性替换文件
-    _replace(d.catalog_path, text)
+
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    _replace(catalog_path, text)
     _replace(d.coverage_path, "# " + GENERATED[5:-4] + "\n" + "# 数据覆盖区间。Router / Agent 的提示词用它（router.data_range()）。\n"
              + yaml.safe_dump(coverage, allow_unicode=True, sort_keys=False))
-    print(f"✓ 语义层目录已生成：{d.catalog_path}（{len(text)} 字符）")
+    print(f"✓ 语义层目录已生成：{catalog_path}（{len(text)} 字符）")
     print(f"✓ 数据覆盖区间：{coverage['start']} ~ {coverage['end']} -> {d.coverage_path}")
 
 

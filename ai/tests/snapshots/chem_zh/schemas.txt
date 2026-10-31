@@ -1,0 +1,155 @@
+{
+  "QueryPlan": {
+    "$defs": {
+      "TimeRange": {
+        "properties": {
+          "start": {
+            "description": "ISO 日期 YYYY-MM-DD",
+            "title": "Start",
+            "type": "string"
+          },
+          "end": {
+            "description": "ISO 日期 YYYY-MM-DD，闭区间",
+            "title": "End",
+            "type": "string"
+          },
+          "grain": {
+            "default": "month",
+            "enum": [
+              "day",
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Grain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRange",
+        "type": "object"
+      }
+    },
+    "description": "把用户问题解析成结构化查询计划，不含 SQL。",
+    "properties": {
+      "intent": {
+        "enum": [
+          "metric_query",
+          "knowledge_lookup",
+          "mixed",
+          "chitchat",
+          "out_of_scope"
+        ],
+        "title": "Intent",
+        "type": "string"
+      },
+      "metrics": {
+        "description": "指标字典中的标准指标名",
+        "items": {
+          "type": "string"
+        },
+        "title": "Metrics",
+        "type": "array"
+      },
+      "dimensions": {
+        "description": "如 装置/产品/大区/客户",
+        "items": {
+          "type": "string"
+        },
+        "title": "Dimensions",
+        "type": "array"
+      },
+      "filters": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Filters",
+        "type": "object"
+      },
+      "time_range": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TimeRange"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "compare_range": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TimeRange"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "同比/环比/两期对比时的对比期；问题里没有对比就是 null"
+      },
+      "needs_knowledge": {
+        "description": "是否需要查制度/口径文档",
+        "title": "Needs Knowledge",
+        "type": "boolean"
+      },
+      "reasoning": {
+        "description": "一句话说明判断依据",
+        "title": "Reasoning",
+        "type": "string"
+      }
+    },
+    "required": [
+      "intent",
+      "needs_knowledge",
+      "reasoning"
+    ],
+    "title": "QueryPlan",
+    "type": "object"
+  },
+  "SqlCandidate": {
+    "description": "SQL 候选或明确的拒答原因。",
+    "properties": {
+      "sql": {
+        "default": "",
+        "description": "只读 SQL。refuse_reason 非空时留空字符串。",
+        "title": "Sql",
+        "type": "string"
+      },
+      "refuse_reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所需时间段没有数据），此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。",
+        "title": "Refuse Reason"
+      },
+      "metric_definitions_used": {
+        "description": "引用了指标字典中的哪些口径条目",
+        "items": {
+          "type": "string"
+        },
+        "title": "Metric Definitions Used",
+        "type": "array"
+      },
+      "assumptions": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Assumptions",
+        "type": "array"
+      }
+    },
+    "title": "SqlCandidate",
+    "type": "object"
+  }
+}

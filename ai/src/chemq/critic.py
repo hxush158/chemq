@@ -18,27 +18,25 @@
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
+from .prompts import string
+
 # 先去掉日期，免得 2026、09、30 被当成要核对的数字
-_DATE = re.compile(
-    r"\d{4}\s*[-/年.]\s*\d{1,2}(\s*[-/月.]\s*\d{1,2}\s*日?)?"   # 2026-03-01 / 2026年3月5日 / 2026-03
-    r"|\d{4}\s*年"                                             # 2026 年
-    r"|\d{1,2}\s*月(\s*\d{1,2}\s*日)?"                          # 3 月 / 3月5日
-    r"|\d{1,2}\s*日"
-    r"|[一二三四]?季度|Q[1-4]"
-)
+_DATE = re.compile(string("critic_date_pattern"))
 # 资料编号 [KB-ENE-2026#7] 不是数值（agents.py 要求回答里标出处）
 _REF = re.compile(r"\[?[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+#\d+\]?")
 # 字母后面紧跟的数字是编号（P01、GB/T 2589、Q3），不是数值
 _NUM = re.compile(r"(?<![A-Za-z/_\d.])-?\d[\d,]*(?:\.\d+)?")
-_UNIT_AFTER = re.compile(r"^\s*(次|个|台|家|吨|t|%|％|小时|天|笔|位|kWh|元)")
-_SCALE_AFTER = {"万": Decimal(10_000), "亿": Decimal(100_000_000)}
+_UNIT_AFTER = re.compile(string("critic_unit_after_pattern"))
+_SCALE_PATTERN = re.compile(string("critic_scale_after_pattern"))
+_SCALE_AFTER = {k: Decimal(v) for k, v in json.loads(string("critic_scale_factors")).items()}
 # 区间写法"7.18～7.44 万吨"：前一个数也跟着用后面的"万"
-_RANGE_THEN_UNIT = re.compile(r"^[～~—至到]\s*-?\d[\d,]*(?:\.\d+)?\s*(万|亿)")
+_RANGE_THEN_UNIT = re.compile(string("critic_range_then_unit_pattern"))
 
 
 @dataclass
@@ -63,11 +61,10 @@ def _claims(text: str) -> list[tuple[str, Decimal]]:
         s = m.group()
         digits = s.lstrip("-").replace(",", "")
         after = text[m.end():].lstrip()
-        if "." not in digits and len(digits) == 1 and not _UNIT_AFTER.match(after):
+        scale_match = _SCALE_PATTERN.match(after) or _RANGE_THEN_UNIT.match(after)
+        if "." not in digits and len(digits) == 1 and not _UNIT_AFTER.match(after) and not scale_match:
             continue                     # 一位整数且后面没单位：多半是排名、序号
-        unit = after[:1]
-        if unit not in _SCALE_AFTER and (r := _RANGE_THEN_UNIT.match(after)):
-            unit = r.group(1)
+        unit = scale_match.group(1).lower() if scale_match else ""
         out.append((s, _SCALE_AFTER.get(unit, Decimal(1))))
     return out
 

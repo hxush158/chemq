@@ -41,8 +41,23 @@ class Domain:
         return self.config.get("locale", "zh")
 
     @property
+    def has_kb(self) -> bool:
+        return self.config["knowledge_base"]
+
+    @property
     def display_name(self) -> str:
         return self.config.get("display_name", self.id)
+
+    @property
+    def primary_dialect(self) -> str:
+        """dialects 的第一项是主方言，决定根目录语义层目录的方言。"""
+        dialects = self.config.get("dialects")
+        if not isinstance(dialects, list) or not dialects:
+            raise ValueError(f"domains/{self.id}/domain.yaml 里的 dialects必须是非空列表")
+        first = dialects[0]
+        if not isinstance(first, str) or not first.strip:
+            raise ValueError(f"domains/{self.id}/domain.yaml 里的 dialects 第一项必须是非空字符串")
+        return first
 
     @property
     def schema(self) -> str:
@@ -141,7 +156,12 @@ def load_domain(domain_id: str) -> Domain:
     if cfg.get("id") != domain_id:
         # 目录名和 id 不一致时宁可启动就炸：复制一个领域包忘了改 id，是最容易出的错
         raise ValueError(f"{cfg_path} 里的 id={cfg.get('id')!r} 和目录名 {domain_id!r} 不一致")
-    return Domain(id=domain_id, root=root, config=cfg)
+    if not isinstance(cfg.get("knowledge_base"), bool):
+        raise ValueError(f"{cfg_path} 必须显式设置 knowledge_base: true 或 false")
+    d = Domain(id=domain_id, root=root, config=cfg)
+    if d.has_kb and not d.kb_docs_dir.is_dir():
+        raise FileNotFoundError(f"{cfg_path} 声明有知识库，但目录不存在：{d.kb_docs_dir}")
+    return d
 
 
 @lru_cache

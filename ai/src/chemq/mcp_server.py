@@ -5,7 +5,7 @@
 然后问 Claude Code「上个月哪个装置单位能耗最高」，它会自己调这里的工具查库。
 
 工具的实现全在 tools.py（和 Agent SDK 编排共用一份），这里只做"接线"。
-暴露的工具刻意只有三个，都是只读；run_semantic_query 照样过 sqlguard。
+暴露的工具都是只读；有知识库的领域才注册检索工具，run_semantic_query 照样过 sqlguard。
 
 行级权限：scope 从环境变量 CHEMQ_SCOPE 读，**不是工具参数** —— 见 tools.py 的说明。
 
@@ -17,9 +17,10 @@ import os
 from typing import Any
 
 from . import tools
+from .domain import domain
 from .prompts import string
 
-INSTRUCTIONS = string("mcp_instructions")     # 正文在 prompts/<locale>/strings.yaml
+INSTRUCTIONS = string("mcp_instructions" if domain().has_kb else "mcp_instructions_no_kb")
 
 
 def _server_class() -> Any:
@@ -49,9 +50,10 @@ def build_server(scope: str | None = None) -> Any:
     def run_semantic_query(sql: str) -> dict:
         return tools.run_semantic_query(sql, scope=scope)
 
-    @server.tool(description=tools.DESC_SEARCH)
-    def search_knowledge(question: str) -> dict:
-        return tools.search_knowledge(question)
+    if domain().has_kb:
+        @server.tool(description=tools.DESC_SEARCH)
+        def search_knowledge(question: str) -> dict:
+            return tools.search_knowledge(question)
 
     return server
 

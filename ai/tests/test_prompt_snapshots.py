@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import difflib
+import json
 import sys
 from pathlib import Path
 
@@ -22,6 +23,15 @@ AS_OF = "2026-09-14"          # 和评测的基准时间一致
 def rendered() -> dict[str, str]:
     """当前代码实际会发给模型的提示词（化工领域、中文）。"""
     from chemq import agents, kb_answer, mcp_server, router, text2sql, tools
+    from chemq.schemas import QueryPlan, SqlCandidate, TimeRange
+
+    plan = QueryPlan(
+        intent="metric_query",
+        metrics=["产量"],
+        time_range=TimeRange(start="2026-08-01", end="2026-08-31"),
+        needs_knowledge=False,
+        reasoning="示例",
+    )
 
     return {
         "router_role.txt": router.SYSTEM_ROLE.replace("{DATA_RANGE}", router.data_range()),
@@ -34,6 +44,21 @@ def rendered() -> dict[str, str]:
         "tool_run_sql.txt": tools.DESC_RUN_SQL,
         "tool_search.txt": tools.DESC_SEARCH,
         "mcp_instructions.txt": mcp_server.INSTRUCTIONS,
+        "text2sql_user.txt": text2sql.build_user_message(
+            plan, question="8月产量多少", as_of=AS_OF,
+        ),
+        "kb_user.txt": "\n".join(
+            block["text"]
+            for block in kb_answer.build_user_content(
+                "8月产量多少", [], [{"v": 1}],
+            )
+        ),
+        "schemas.txt": json.dumps({
+            "QueryPlan": QueryPlan.model_json_schema(),
+            "SqlCandidate": SqlCandidate.model_json_schema(),},
+        ensure_ascii=False,
+        indent=2,
+        ),
     }
 
 

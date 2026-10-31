@@ -21,8 +21,8 @@ from .db import run_query
 from .dialects import DIALECT_PROFILE, profile  # noqa: F401  —— DIALECT_PROFILE 是再导出
 from .domain import domain
 from .llm import Llm, LlmResult
-from .prompts import render
-from .router import load_metric_dictionary
+from .prompts import render, string
+from .router import metric_dictionary_block
 from .schemas import QueryPlan, SqlCandidate
 from .sqlguard import check
 
@@ -50,7 +50,7 @@ def schema_context(dialect: str | None = None) -> str:
     `received_cny` 被模型学去，查明细表、用英文底层列名（W3 主评测 Q004）。
 
     路径解析留了换引擎的口子：领域包里 <dialect>/semantic_catalog.md 存在就用它，
-    否则回落到平铺的 semantic_catalog.md（只对 postgres）。
+    否则回落到平铺的 semantic_catalog.md（只对领域主方言）。
     """
     dialect = dialect or settings().sql_dialect
     d = domain()
@@ -60,7 +60,8 @@ def schema_context(dialect: str | None = None) -> str:
         return per_dialect.read_text(encoding="utf-8")
 
     flat = d.catalog_path
-    if dialect == "postgres":
+    
+    if dialect == d.primary_dialect:
         if flat.exists():
             return flat.read_text(encoding="utf-8")
         raise FileNotFoundError(f"缺少语义层目录 {flat}。先跑 make catalog（需要数据库已 make seed）")
@@ -110,10 +111,10 @@ def build_user_message(plan: QueryPlan, *, question: str = "", as_of: str | None
     """
     parts: list[str] = []
     if question:
-        parts.append(f"用户原始问题：{question}")
+        parts.append(string("text2sql_user_question", extra={"question": question}))
     if as_of:
-        parts.append(f"基准时间：{as_of}")
-    parts.append("查询计划（上游解析器给出；如果有 time_range，以它为准，不要根据原始问题重新推算日期）：")
+        parts.append(string("text2sql_base_date", extra={"as_of": as_of}))
+    parts.append(string("text2sql_plan_title"))
     parts.append(plan.model_dump_json())
     return "\n".join(parts)
 
@@ -130,7 +131,7 @@ def generate(
     system = Llm.cached_system(
         system_role(),
         schema_context(),
-        "# 指标口径字典\n" + load_metric_dictionary(),
+        metric_dictionary_block(),
     )
     return llm.parse(
         model=settings().model_sql,

@@ -1,6 +1,7 @@
 # NZ Power 领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
 id: nz_power
 locale: en
+knowledge_base: false
 display_name: NZ Electricity Market
 schema: main
 dialects: [duckdb]
@@ -46,5 +47,6 @@ prompt_slots:
         are aliases of the daily maximum price and are supported; prices "by island", "by region" or a "national price" are not.
   no_hardcode_examples: the number of trading periods in a day or a list of node ids
   filter_dimensions: node_id
+  dimension_examples: node_id
   breakdown_example: a breakdown by node or by trading period
   kb_ref_example: KB-NZ-001#1

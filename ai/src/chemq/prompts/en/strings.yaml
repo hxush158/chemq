@@ -29,3 +29,44 @@ catalog_values_note: 'When filtering by name, use only these exact values (chara
 
 # ---- "Data coverage" in prompts (router.data_range()) ----
 data_range: '{{start}} to {{end}}'
+
+# ---- Model user messages, dictionary heading, refusal markers and JSON Schema ----
+router_user_message: |-
+  Base date: {{as_of}}
+  User question: {{question}}
+text2sql_user_question: 'Original user question: {{question}}'
+text2sql_base_date: 'Base date: {{as_of}}'
+text2sql_plan_title: 'Query plan (from the upstream parser; if time_range is present, use it as authoritative and do not recalculate dates from the original question):'
+kb_sql_results: |-
+  Database query results (already calculated by the system; copy them, do not recalculate):
+  {{rows}}
+kb_user_question: 'User question: {{question}}'
+metric_dictionary_title: '# Metric dictionary'
+marker_cannot_answer: '[CANNOT ANSWER]'
+marker_not_covered: '[NOT COVERED]'
+mcp_instructions_no_kb: 'Read-only query tools for {{data_name}}. Call list_metrics for metric definitions and the semantic catalog before writing SQL; numbers may only come from run_semantic_query results. This domain has no knowledge base and cannot provide explanations grounded in supporting documents.'
+kb_unavailable: This domain has no knowledge base and cannot answer questions that require supporting documents.
+kb_explanation_unavailable: This domain has no knowledge base and cannot provide an explanation grounded in supporting documents.
+schema_query_plan: Parse the user question into a structured query plan without SQL.
+schema_sql_candidate: A SQL candidate or an explicit reason for refusal.
+schema_time_start: ISO date YYYY-MM-DD
+schema_time_end: ISO date YYYY-MM-DD, inclusive
+schema_metrics: Standard metric names from the metric dictionary
+schema_dimensions: 'For example: {{dimension_examples}}'
+schema_compare_range: Comparison period for year-over-year, period-over-period or two-period comparisons; null if no comparison is requested
+schema_needs_knowledge: Whether rules or metric definition documents need to be consulted
+schema_reasoning: One sentence explaining the decision
+schema_sql: Read-only SQL. Leave an empty string when refuse_reason is non-empty.
+schema_refuse_reason: Only provide a reason when the semantic views below cannot answer faithfully (the metric does not exist or the required period has no data), and leave sql empty. Must be null when the question can be answered. Never put a refusal into a SQL string.
+schema_metric_definitions_used: Which metric definition entries from the dictionary were used
+schema_answer_intent: Intent determined by the router; evals uses it for intent_acc
+schema_answer_refused: Whether the answer was refused; evals uses it for refuse_acc
+schema_answer_cost: Total API cost for this question and answer
+schema_answer_numbers_from_sql: True means all numbers come from SQL results and the model performed no arithmetic
+
+# ---- Critic locale rules; single quotes preserve regex backslashes ----
+critic_date_pattern: '(?ix)\b\d{4}\s*[-/.]\s*\d{1,2}(?:\s*[-/.]\s*\d{1,2})?\b|\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b|\b(?:\d{1,2}(?:st|nd|rd|th)?\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)\b|\bQ[1-4](?:\s+\d{4})?\b'
+critic_unit_after_pattern: '(?i)^\s*(?:%|(?:times?|nodes?|plants?|products?|customers?|tonnes?|tons?|t|hours?|days?|months?|years?|periods?|trades?|kWh|MWh|MW|NZD|dollars?|cents?|percent(?:age\s+points?)?)\b)'
+critic_scale_after_pattern: '(?i)^\s*(thousand|million|billion)\b'
+critic_range_then_unit_pattern: '(?i)^\s*(?:[～~—–-]|to\b)\s*-?\d[\d,]*(?:\.\d+)?\s*(thousand|million|billion)\b'
+critic_scale_factors: '{"thousand": 1000, "million": 1000000, "billion": 1000000000}'

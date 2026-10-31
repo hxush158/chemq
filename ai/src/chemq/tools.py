@@ -43,10 +43,10 @@ def _jsonable(rows: list[dict]) -> list[dict]:
 
 
 def list_metrics() -> str:
-    from .router import load_metric_dictionary  # noqa: PLC0415
+    from .router import metric_dictionary_block  # noqa: PLC0415
     from .text2sql import schema_context  # noqa: PLC0415
 
-    return "# 指标口径字典\n" + load_metric_dictionary() + "\n\n" + schema_context()
+    return metric_dictionary_block() + "\n\n" + schema_context()
 
 
 def run_semantic_query(

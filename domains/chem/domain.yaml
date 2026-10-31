@@ -1,6 +1,7 @@
 # 化工领域包的引擎侧配置。设计见 docs/11-domain-pack-design.md 第四节。
 id: chem
 locale: zh
+knowledge_base: true
 display_name: 示例化工
 
 dialects: [postgres, doris]
@@ -53,5 +54,6 @@ prompt_slots:
         不要因为名字里带"成本"两个字就判 out_of_scope。
   no_hardcode_examples: 折标煤系数、税率
   filter_dimensions: 装置、产品、客户、大区、能源
+  dimension_examples: 装置/产品/大区/客户
   breakdown_example: 按装置拆开
   kb_ref_example: KB-ENE-2026#7

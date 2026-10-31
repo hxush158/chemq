@@ -44,6 +44,19 @@ def test_same_slots_per_template(loc):
         base, other = prompts.template(name, BASE), prompts.template(name, loc)
         assert prompts.slot_names(other) == prompts.slot_names(base), f"{loc}/{name}.md 的 {{{{空位}}}} 和 {BASE} 不一致"
         assert set(_SINGLE.findall(other)) == set(_SINGLE.findall(base)), f"{loc}/{name}.md 的运行时 {{占位}} 和 {BASE} 不一致"
+        markers = r"^\s*(\[\[if [a-z_][a-z0-9_]*\]\]|\[\[endif\]\])\s*$"
+        assert re.findall(markers, other, re.MULTILINE) == re.findall(markers, base, re.MULTILINE)
+
+
+@pytest.mark.parametrize("loc", LOCALES)
+@pytest.mark.parametrize("has_kb", [False, True])
+def test_agent_sections_render_in_each_locale(loc, has_kb):
+    text = prompts.render("agent", locale=loc, sections={"kb": has_kb})
+    assert ("search_knowledge" in text) == has_kb
+    assert "[[" not in text
+    assert re.findall(r"^(\d+)\.", text, re.MULTILINE) == (
+        ["1", "2", "3", "4", "5", "6"] if has_kb else ["1", "2", "3", "4"]
+    )
 
 
 @pytest.mark.parametrize("loc", OTHERS)
@@ -52,3 +65,13 @@ def test_same_string_keys_and_slots(loc):
     assert set(other) == set(base), {"缺": sorted(set(base) - set(other)), "多": sorted(set(other) - set(base))}
     for key in base:
         assert prompts.slot_names(other[key]) == prompts.slot_names(base[key]), f"{loc}/strings.yaml:{key}"
+
+
+@pytest.mark.parametrize("loc", LOCALES)
+@pytest.mark.parametrize("key, template", [
+    ("marker_cannot_answer", "agent"),
+    ("marker_not_covered", "kb_answer"),
+])
+def test_refusal_marker_matches_template(loc, key, template):
+    marker = prompts.string(key, locale=loc)
+    assert marker and marker in prompts.template(template, loc)

@@ -1,0 +1,4 @@
+用户原始问题：8月产量多少
+基准时间：2026-09-14
+查询计划（上游解析器给出；如果有 time_range，以它为准，不要根据原始问题重新推算日期）：
+{"intent":"metric_query","metrics":["产量"],"dimensions":[],"filters":{},"time_range":{"start":"2026-08-01","end":"2026-08-31","grain":"month"},"compare_range":null,"needs_knowledge":false,"reasoning":"示例"}

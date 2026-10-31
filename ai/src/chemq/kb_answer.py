@@ -19,11 +19,11 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence
 
 from .config import settings
-from .prompts import render
+from .prompts import render, string
 from .rag import Hit, hit_signals, hybrid_search
 from .schemas import Citation
 
-NOT_COVERED = "【资料未覆盖】"
+NOT_COVERED = string("marker_not_covered")
 NO_HIT_TEXT = "知识库里没有找到和这个问题相关的资料。"
 NO_CITATION_TEXT = "这次回答没有标出资料出处，可能不是依据知识库作答，已拦截。请换个问法或联系管理员补充资料。"
 MAX_ROWS_IN_PROMPT = 50
@@ -72,8 +72,8 @@ def build_user_content(question: str, hits: Sequence[Hit],
     blocks = to_search_results(hits)
     if sql_rows:
         rows = json.dumps(sql_rows[:MAX_ROWS_IN_PROMPT], ensure_ascii=False, default=str)
-        blocks.append({"type": "text", "text": f"数据库查询结果（系统已算好，照抄，不要重算）：\n{rows}"})
-    blocks.append({"type": "text", "text": f"用户问题：{question}"})
+        blocks.append({"type": "text", "text": string("kb_sql_results", extra={"rows": rows})})
+    blocks.append({"type": "text", "text": string("kb_user_question", extra={"question": question})})
     return blocks
 
 
