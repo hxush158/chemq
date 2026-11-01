@@ -39,14 +39,25 @@
 W1 剥离 .NET 的具体内容：删除 `gateway/` 目录（留在 git 历史里），
 删掉 Makefile 的 `gateway` 目标，改掉 README 里的 .NET 和 CDK 两处。C# 另外单独学。
 
+W1 结果（10/31，提交 `6815fdc`）：验收达成。同一引擎、两个领域包，固定流程全过：
+
+| 领域包 | 引擎 | 做法 | 结果 | 成本 |
+|---|---|---|---|---|
+| chem | Postgres | pipeline | golden 20/20（intent / exec / refuse / citation 全 1.0） | $0.14 |
+| chem | Postgres | agent | golden 20/20 | $0.31 |
+| nz_power | DuckDB（服务库） | pipeline | golden 5/5（intent / exec / refuse 全 1.0） | $0.02 |
+
+过程和设计见 `docs/11-domain-pack-design.md`；留给 W3 的事在那份文档第八节的待办里。
+
 ## 三项接口（W1 内定稿，两边对着做）
 
 ### 1. 数据库适配器（沿用 `db.py` 的 Engine 协议）
 
 现有协议：`dialect`、`readonly_cursor(region)`、`run_query(sql, region, params)`、`app_cursor()`。
 
-- **DuckDBEngine**（W1）：只读连接，读 nz-power-pipeline 产出的 `dbt_dev.duckdb`（路径走配置）。
-  DuckDB 没有行级权限，权限靠只暴露 mart 视图。
+- **DuckDBEngine**（W1 ✅）：只读连接，读 `make duckdb-serve` 从 nz-power-pipeline 的 `dbt_dev.duckdb` 生成的服务库
+  `domains/nz_power/data/serving.duckdb`（只含白名单的 3 个对象，按 as_of 截断，核对快照后才发布）。
+  DuckDB 没有行级权限，权限靠服务库里只有这 3 个对象 + sqlguard 白名单。
 - **SnowflakeEngine**（W2）：用只读角色（reporter）连接。行级权限和 Doris 同类，
   靠"选哪个连接 / 角色"表达，不靠会话变量。
 - sqlglot 的 dialect 由 `Engine.dialect` 决定，业务代码里不出现 `if dialect == ...`。

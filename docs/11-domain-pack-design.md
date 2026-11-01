@@ -169,9 +169,18 @@ critic:
 
 第 5 步之前要从数据底座拿到：NZ 的 5 道题、`nz_power_metrics.yaml`、mart 视图清单。
 
+W1 完成（10/31，提交 `6815fdc`）：chem pipeline 20/20、chem agent 20/20、nz_power pipeline 5/5。
+第 5 步实际做了这些（和上表相比多出来的部分）：
+- `build_catalog` / `build_golden` 改走引擎，不再起 psql；chem 重新生成零 diff
+- NZ 指标字典从 nz-power-pipeline 复制（`make sync-nz-metrics` / `make check-nz-metrics`，文件头记 commit + sha256）
+- 进模型的文字按语言取 `prompts/<locale>/strings.yaml`：Router / text2sql / 知识库的用户消息、字典标题、拒答标记、schema 描述；Critic 按语言切换日期和单位规则
+- `domain.yaml` 的 `knowledge_base` 开关：没有知识库的领域，Agent 不注册 `search_knowledge`、提示词去掉相关段落（`[[if kb]]` 条件块）、MCP 不注册、pipeline 不调知识库
+- 平铺的 `semantic_catalog.md` 只对主方言（`dialects` 第一个）有效，生成和读取用同一条规则
+- 有意改动 chem 的三处（快照已更新、评测重跑无退步）：schema 顶层描述不再带开发者 docstring；Critic 会核对"一位整数 + 万/亿"；`agent.md` 规则顺序调整
+
 ## 八、NZ 电力数据快照（来自 nz-power-pipeline，2026-10-28）
 
-数据库：nz-power-pipeline 根目录的 `dbt_dev.duckdb`，schema `main`，只读连接。
+数据库：nz-power-pipeline 根目录的 `dbt_dev.duckdb`，schema `main`。ChemQ 不直接连它，而是连 `make duckdb-serve` 生成的服务库 `domains/nz_power/data/serving.duckdb`。
 可查对象：`mart_current_price`（表）、`mart_daily_price`（表）、`v_dim_node`（视图）。
 语义层：nz-power-pipeline 的 `semantic/nz_power_metrics.yaml`（英文；`QueryPlan.metrics` 用 `name`）。
 
@@ -203,6 +212,15 @@ critic:
 
 - **查出 0 行要明确提示"这段时间没有数据"**，不能返回一张空表（上面 OHG1101 那题靠它）
 - 数据覆盖目前按 min~max 算，假定连续。NZ 现在连续；以后若出现缺日，覆盖改成记日期集合
-- DuckDB 没有账号权限，`main` 里的 `fact_*` / `dim_*` / `stg_*` 只靠 sqlguard 白名单拦 —— 第 4 步让 DuckDBEngine 只暴露 3 个对象
+- ~~DuckDB 没有账号权限，`fact_*` / `dim_*` / `stg_*` 只靠 sqlguard 白名单拦~~ → 第 4 步已解决：服务库里只有 3 个对象
 - dbt 写库时 DuckDB 文件打不开：评测 / 演示时别同时跑 dbt
 - 快照校验由 make duckdb-serve 在发布服务库前保证：核对对象集合、行数和价格总和，通过后才替换 serving.duckdb。build_golden 使用该流程生成的服务库，不重复校验；修改 eval.as_of 或 eval.snapshot 后必须重建服务库。
+
+### 待办（W1 收尾时攒下的，W3 一起做）
+
+- **给用户看的文字按语言切换**（W1 第 5 项的第 2 档）：拒答理由（`coverage.py`）、caveats（`pipeline.py`、`agents.py`）、`NO_HIT_TEXT` / `NO_CITATION_TEXT`。英文演示之前必须做完
+- **没有知识库时，定义类问题被拒答**：NZ 的 Router 会把 "what does an interim price mean" 判成 `knowledge_lookup`，pipeline 直接拒答，而指标字典里其实有答案。二选一：Router 改判，或允许无知识库的领域用字典作答
+- **`run_eval` 的 citation_acc 误报**：现在按 WEEK ≥ 3 要求引用指标有分，NZ 没有引用题就报 ❌。改成"评测集里有这类题才要求"
+- **`run_eval` 的开头和报告里写上领域和方言**：W1 时跑错过一次领域，单看输出看不出来
+- **Critic 的正则搬回 `critic.py`**：现在放在 `strings.yaml` 里，按语言分两套写成代码里的表；en 日期正则去掉 `x` 标志
+- **英文 Router 的时间规则只有按月的**："最近 N 天"现在只靠示例 3 教；日级题出错就给模板补一条日级规则
