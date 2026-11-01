@@ -49,6 +49,46 @@ W1 结果（10/31，提交 `6815fdc`）：验收达成。同一引擎、两个�
 
 过程和设计见 `docs/11-domain-pack-design.md`；留给 W3 的事在那份文档第八节的待办里。
 
+### W2 做法（11/1 定稿）
+
+**定下来的事**
+- 11/2 当天注册试用（30 天、$400 额度、不要信用卡），AWS 悉尼（ap-southeast-2），Standard 版。试用到 12/2 左右，到期账号挂起
+- 程序用 `TYPE=SERVICE` 用户 + 密钥对（SERVICE 用户不能用密码）。密钥对是长期凭证，和 AWS 只用临时凭证的规矩不同，接受的理由：
+  查询账号只有 3 张表的 SELECT；私钥加密放 `~/.snowflake/`（`.claude/settings.json` 禁读，preflight 拦 `PRIVATE KEY`）；试用结束账号即停
+- 导数、查询分两个用户两把钥匙：查询那把泄露了也写不了东西
+- W4 公网演示跑 DuckDB；Snowflake 用评测结果 + 录屏展示，**录屏在试用结束前完成**
+
+**步骤**
+
+| 步 | 内容 | 谁做 | 验收 |
+|---|---|---|---|
+| 0 | 开账号；跑 `domains/nz_power/data/snowflake/00_setup.sql`；生成密钥 | SQL Claude 起草，Hui 在 Snowsight 执行 | reporter 能连上；`CREATE TABLE` 被拒 |
+| 1 | 导数：serving.duckdb 的 3 个对象 → parquet → `PUT` → `COPY INTO`；导完逐张 `GRANT SELECT` 给 reporter | Hui | Snowflake 上核对快照：2,156,450 行、price_sum 137078471.80 |
+| 2 | `dialects.py` 加 snowflake；sqlguard 大小写不敏感、三段式全名、Snowflake 敏感写法 | Hui | 新越权测试全拦；chem 测试不变 |
+| 3 | SnowflakeEngine（密钥对、role 写死 reporter、query_timeout、拒绝 scope、列名转小写） | Hui；配置项和 Makefile 接线 Claude | mock 连接的单元测试；有凭证时才跑的集成测试 |
+| 4 | Snowflake 版语义层目录（`domains/nz_power/snowflake/`）+ 跨引擎比对脚本（参考 SQL 用 sqlglot duckdb→snowflake 翻译） | Hui | 4 道取数题两个引擎结果逐行一致 |
+| 5 | NZ 在 Snowflake 上跑评测；文档 | 评测 Hui，文档 Claude | 5/5；记录 p95、成本，和 DuckDB 对比 |
+
+W2 验收：同一道题在 DuckDB 和 Snowflake 上结果一致；chem 不退步。
+
+**坑（提前知道的）**
+- Snowflake 把不加引号的标识符转成大写：sqlguard 白名单要不区分大小写；`information_schema` 里 schema / 表名是大写，`build_catalog` 按 `'main'` 查会一行都查不到
+- 要拦的写法：`@stage` 引用、`PUT/GET/COPY/LIST/REMOVE/CALL/EXECUTE IMMEDIATE`、`SYSTEM$…`、`RESULT_SCAN`、`INFER_SCHEMA`、`IDENTIFIER('…')`（字符串拼表名，能绕过白名单）、`SNOWFLAKE.ACCOUNT_USAGE`
+- `TIMESTAMP` → `TIMESTAMP_NTZ`（本地时间不带时区，夏令时那天 02:00–03:00 出现两次）
+- 每次查询都新建连接要认证，warehouse 从挂起恢复也要几秒：先量 p95 再决定要不要复用连接
+- 连接默认 `pyformat` 在客户端拼参数：和 Postgres 一样，没有 params 时不要传 `{}`
+
+**生成密钥（第 0 步，在自己电脑上跑；会提示设密码短语）**
+
+```
+mkdir -p ~/.snowflake && chmod 700 ~/.snowflake
+for who in loader reporter; do
+  openssl genrsa 2048 | openssl pkcs8 -topk8 -v2 aes256 -inform PEM -out ~/.snowflake/chemq_$who.p8
+  openssl rsa -in ~/.snowflake/chemq_$who.p8 -pubout -out ~/.snowflake/chemq_$who.pub
+  chmod 600 ~/.snowflake/chemq_$who.p8
+done
+```
+
 ## 三项接口（W1 内定稿，两边对着做）
 
 ### 1. 数据库适配器（沿用 `db.py` 的 Engine 协议）

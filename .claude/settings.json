@@ -5,7 +5,8 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Read(./ai/.env)"
+      "Read(./ai/.env)",
+      "Read(~/.snowflake/**)"
     ]
   }
 }
