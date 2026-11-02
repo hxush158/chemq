@@ -36,10 +36,9 @@ WRITE_NODES = (
 SENSITIVE_TOKENS = SENSITIVE_TOKENS_BY_DIALECT["postgres"]
 
 
-def _qualified(table: exp.Table) -> str:
-    db = table.text("db") or domain().schema          # 没写 schema 的表，按领域包的 schema 算
-    return f"{db}.{table.name}".lower()
-
+def _qualified(table: exp.Table, dialect: str) -> str:
+    schema = table.text("db") or domain().schema_for(dialect)
+    return f"{schema}.{table.name}".lower()
 
 def check(
     sql: str,
@@ -82,14 +81,27 @@ def check(
     for node_type in WRITE_NODES:
         if next(stmt.find_all(node_type), None) is not None:
             violations.append(f"包含写操作节点: {node_type.__name__.upper()}")
-
+    # IDENTIFIER 后面可以有空格或注释，不能只靠 "identifier(" 子串匹配。
+    if dialect == "snowflake" and stmt.find(exp.DynamicIdentifier) is not None:
+        violations.append("包含敏感操作: 动态标识符 IDENTIFIER")
     allowed = {a.lower() for a in allowed_relations}
     cte_names = {c.alias_or_name.lower() for c in stmt.find_all(exp.CTE)}
     for table in stmt.find_all(exp.Table):
-        if table.name.lower() in cte_names and not table.text("db"):
+        # 所有方言都禁止显式库名，只允许 schema.table 或 table。
+        if table.catalog:
+            violations.append("不允许使用带库名的三段式表名")
             continue
-        if _qualified(table) not in allowed:
-            violations.append(f"不允许访问 {_qualified(table)}；只能查语义层视图")
+
+        if (
+            table.name.lower() in cte_names
+            and not table.text("db")
+            and not table.text("catalog")
+            ):
+            continue
+
+        qualified = _qualified(table, dialect)
+        if qualified not in allowed:
+            violations.append(f"不允许访问 {qualified}；只能查语义层视图")
 
     # 一条取数 SQL 至少要引用一个真实的视图。不碰任何表的 SELECT
     # （SELECT 1、SELECT '查询被拒绝：…' AS 提示）语法合法、能执行、能返回一行，
@@ -97,7 +109,11 @@ def check(
     # 只引用 CTE、而 CTE 里也没有表的情况同理。
     real_tables = [
         t for t in stmt.find_all(exp.Table)
-        if not (t.name.lower() in cte_names and not t.text("db"))
+        if not (
+            t.name.lower() in cte_names
+            and not t.text("db")
+            and not t.text("catalog")
+        )
     ]
     if not real_tables:
         violations.append(

@@ -131,7 +131,10 @@ def test_system_role_renders_per_dialect():
 def test_unknown_dialect_fails_loudly():
     with pytest.raises(ValueError):
         system_role("mysql")
-    assert set(DIALECT_PROFILE) == {"postgres", "doris", "duckdb"}
+    assert set(DIALECT_PROFILE) == {
+        "postgres", "doris", "duckdb", "snowflake",
+    }
+    assert set(SENSITIVE_TOKENS_BY_DIALECT) == set(DIALECT_PROFILE)
 
 
 # ---------- ⑤ 未实现的引擎必须响亮地失败 ----------
@@ -156,3 +159,181 @@ def test_engine_registry():
     assert _ENGINES["postgres"] is PostgresEngine
     assert _ENGINES["doris"] is DorisEngine
     assert _ENGINES["duckdb"] is DuckDBEngine
+
+# ---------- ⑥  Snowflake 特定测试 ----------
+
+SF_ALLOWED = ("mart.mart_daily_price",)
+
+SF_STATEMENTS = [
+    "PUT file:///tmp/x.csv @mystage",
+    "GET @mystage file:///tmp/",
+    "COPY INTO mart.mart_daily_price FROM @mystage",
+    "COPY INTO @mystage FROM (SELECT * FROM mart.mart_daily_price)",
+    "LIST @mystage",
+    "REMOVE @mystage",
+    "CALL my_proc()",
+    "EXECUTE IMMEDIATE 'SELECT 1'",
+]
+
+
+@pytest.mark.parametrize("sql", SF_STATEMENTS)
+def test_snowflake_statement_roots_blocked(monkeypatch, sql):
+    # 排除 token 干扰，证明根节点白名单本身就能拒绝。
+    monkeypatch.setitem(SENSITIVE_TOKENS_BY_DIALECT, "snowflake", ())
+
+    v = check(sql, SF_ALLOWED, dialect="snowflake")
+
+    assert not v.ok
+    assert any(x.startswith("只允许 SELECT") for x in v.violations)
+
+
+@pytest.mark.parametrize("sql", SF_STATEMENTS)
+@pytest.mark.parametrize("position", ["before", "after"])
+def test_snowflake_multiple_statements_blocked(monkeypatch, sql, position):
+    monkeypatch.setitem(SENSITIVE_TOKENS_BY_DIALECT, "snowflake", ())
+    normal = "SELECT * FROM mart.mart_daily_price"
+    combined = (
+        f"{sql}; {normal}" if position == "before"
+        else f"{normal}; {sql}"
+    )
+
+    v = check(combined, SF_ALLOWED, dialect="snowflake")
+
+    assert not v.ok
+    assert any(x.startswith("只允许单条语句") for x in v.violations)
+
+
+@pytest.mark.parametrize("expression", [
+    "IDENTIFIER('avg_price')",
+    "IDENTIFIER ('avg_price')",
+    "IDENTIFIER/*c*/('avg_price')",
+])
+def test_snowflake_dynamic_identifier_blocked(monkeypatch, expression):
+    # 排除 "identifier(" token，单独验证 AST 检查。
+    monkeypatch.setitem(SENSITIVE_TOKENS_BY_DIALECT, "snowflake", ())
+
+    v = check(
+        f"SELECT {expression} FROM mart.mart_daily_price",
+        SF_ALLOWED,
+        dialect="snowflake",
+    )
+
+    assert not v.ok
+    assert "包含敏感操作: 动态标识符 IDENTIFIER" in v.violations
+
+
+@pytest.mark.parametrize("token, sql", [
+    ("@", "SELECT * FROM @mystage"),
+    (
+        "identifier(",
+        "SELECT IDENTIFIER('avg_price') FROM mart.mart_daily_price",
+    ),
+    (
+        "result_scan",
+        "SELECT * FROM mart.mart_daily_price, "
+        "TABLE(RESULT_SCAN(LAST_QUERY_ID()))",
+    ),
+    (
+        "infer_schema",
+        "SELECT * FROM mart.mart_daily_price, "
+        "TABLE(INFER_SCHEMA(LOCATION => '@mystage', FILE_FORMAT => 'fmt'))",
+    ),
+    (
+        "system$",
+        "SELECT SYSTEM$GET_SNOWFLAKE_PLATFORM_INFO() "
+        "FROM mart.mart_daily_price",
+    ),
+    (
+        "snowflake.account_usage",
+        "SELECT * FROM snowflake.account_usage.query_history",
+    ),
+    (
+        "get_presigned_url",
+        "SELECT GET_PRESIGNED_URL(@mystage, 'x.csv') "
+        "FROM mart.mart_daily_price",
+    ),
+    (
+        "build_scoped_file_url",
+        "SELECT BUILD_SCOPED_FILE_URL(@mystage, 'x.csv') "
+        "FROM mart.mart_daily_price",
+    ),
+])
+def test_snowflake_sensitive_tokens_blocked(token, sql):
+    v = check(sql, SF_ALLOWED, dialect="snowflake")
+
+    assert not v.ok
+    # 即使还触发了其他规则，也必须证明对应 token 被命中。
+    assert f"包含敏感操作: {token}" in v.violations
+
+
+@pytest.mark.parametrize(
+    "dialect", ["postgres", "doris", "duckdb", "snowflake"]
+)
+@pytest.mark.parametrize("catalog", ["OTHER_DB", "NZ_POWER"])
+def test_catalog_qualified_table_is_blocked(dialect, catalog):
+    # schema.table 本身在白名单中，证明拒绝原因确实是显式库名。
+    v = check(
+        f"SELECT * FROM {catalog}.chem.v_plant_daily",
+        ALLOWED,
+        dialect=dialect,
+    )
+
+    assert not v.ok
+    assert "不允许使用带库名的三段式表名" in v.violations
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT avg_price AS target FROM mart.mart_daily_price",
+    "WITH x AS (SELECT * FROM mart.mart_daily_price) SELECT * FROM x",
+    "SELECT * FROM mart.mart_daily_price "
+    "UNION SELECT * FROM mart.mart_daily_price",
+])
+def test_snowflake_normal_queries_still_pass(sql):
+    v = check(sql, SF_ALLOWED, dialect="snowflake")
+
+    assert v.ok, v.violations
+    assert v.rewritten_sql is not None
+    assert "LIMIT 500" in v.rewritten_sql.upper()
+
+
+# ---------- ⑦ 验证默认 schema 和实际白名单都随方言切换 ----------
+@pytest.mark.parametrize("dialect, expected_schema", [
+    ("snowflake", "mart"),
+    ("duckdb", "main"),
+])
+def test_nz_schema_is_per_dialect(monkeypatch, dialect, expected_schema):
+    from chemq.domain import load_domain
+
+    monkeypatch.setattr(settings(), "sql_dialect", dialect)
+    d = load_domain("nz_power")
+
+    assert d.schema == expected_schema
+    assert d.allowed_relations == (
+        f"{expected_schema}.mart_current_price",
+        f"{expected_schema}.mart_daily_price",
+        f"{expected_schema}.v_dim_node",
+    )
+
+# ---------- ⑧ chem 回归测试，检查它在支持的两个方言下，白名单和正常查询结果保持一致 ----------
+def test_chem_relations_do_not_change(monkeypatch):
+    from chemq.domain import load_domain
+
+    d = load_domain("chem")
+
+    monkeypatch.setattr(settings(), "sql_dialect", "postgres")
+    assert d.schema == "chem"
+    original = d.allowed_relations
+    assert original and all(x.startswith("chem.") for x in original)
+
+    for dialect in ("postgres", "doris"):
+        monkeypatch.setattr(settings(), "sql_dialect", dialect)
+
+        assert d.schema == "chem"
+        assert d.allowed_relations == original
+
+        v = check(
+            "SELECT * FROM chem.v_plant_daily",
+            d.allowed_relations,
+            dialect=dialect,
+        )
+        assert v.ok, v.violations

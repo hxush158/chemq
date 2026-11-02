@@ -59,13 +59,22 @@ class Domain:
             raise ValueError(f"domains/{self.id}/domain.yaml 里的 dialects 第一项必须是非空字符串")
         return first
 
+    def schema_for(self, dialect: str) -> str:
+        overrides = self.config.get("schema_by_dialect", {})
+        s = overrides.get(dialect, self.config.get("schema", ""))
+        if not isinstance(s, str) or not re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*", s
+        ):
+            raise ValueError(
+                f"domains/{self.id}/domain.yaml 的 schema={s!r} "
+                "不是合法的标识符"
+            )
+
+        return s.lower()
+
     @property
     def schema(self) -> str:
-        s = self.config.get("schema", "")
-        # 会拼进 SET search_path / 白名单，只允许普通标识符
-        if not re.fullmatch(r"[a-z_][a-z0-9_]*", s):
-            raise ValueError(f"domains/{self.id}/domain.yaml 的 schema={s!r} 不是合法的小写标识符")
-        return s
+        return self.schema_for(settings().sql_dialect)
 
     @property
     def catalog(self) -> dict[str, Any]:

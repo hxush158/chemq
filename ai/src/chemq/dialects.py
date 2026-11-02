@@ -25,7 +25,12 @@ DIALECT_PROFILE: dict[str, dict[str, str]] = {
     "duckdb": {
         "ENGINE": "DuckDB",
         "ENGINE_NAME": "DuckDB",
-        "MONTH_FMT": "strftime(<日期列>, '%Y-%m')",
+        "MONTH_FMT": "strftime(<date_column>, '%Y-%m')",
+    },
+    "snowflake": {
+        "ENGINE": "Snowflake",
+        "ENGINE_NAME": "Snowflake",
+        "MONTH_FMT": "to_char(<date_column>, 'YYYY-MM')",
     },
 }
 
@@ -67,8 +72,19 @@ _TOKENS_DUCKDB = (
     "export database", "import database", "getenv(", "duckdb_settings",
 )
 
+# Snowflake：stage 引用（@）、动态标识符（identifier）、查询结果读取（result_scan）、
+# 文件结构探测（infer_schema）、系统函数（system$）、账户使用信息（snowflake.account_usage）、
+# 文件访问链接（get_presigned_url / build_scoped_file_url）。
+# 独立语句由 AST 的只读白名单拦截；这里补 SELECT 内的敏感能力，数据库权限仍需兜底。
+_TOKENS_SNOWFLAKE = (
+    "@", "identifier(", "result_scan", "infer_schema",
+    "system$", "snowflake.account_usage",
+    "get_presigned_url", "build_scoped_file_url",
+)
+
 SENSITIVE_TOKENS_BY_DIALECT: dict[str, tuple[str, ...]] = {
     "postgres": _TOKENS_COMMON + _TOKENS_POSTGRES,
     "doris": _TOKENS_COMMON + _TOKENS_DORIS,
     "duckdb": _TOKENS_COMMON + _TOKENS_DUCKDB,
+    "snowflake": _TOKENS_COMMON + _TOKENS_SNOWFLAKE,
 }

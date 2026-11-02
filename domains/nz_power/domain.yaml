@@ -4,7 +4,9 @@ locale: en
 knowledge_base: false
 display_name: NZ Electricity Market
 schema: main
-dialects: [duckdb]
+schema_by_dialect:
+  snowflake: MART
+dialects: [duckdb, snowflake]
 
 catalog:
   views: [mart_current_price, mart_daily_price, v_dim_node]
