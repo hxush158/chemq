@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     # postgres：W1-W4 的学习环境（Docker 一键重建，评测跑得快，RAG 用 pgvector）
     # doris   ：W5 接入，客户侧的真实引擎（MySQL 协议，OLAP MPP）
     # duckdb  ：阶段二 W1，NZ 包的引擎
-    sql_dialect: Literal["postgres", "doris", "duckdb"] = "postgres"
+    # snowflake：阶段二 W2，NZ 包的第二个引擎（数据由 nz-power-pipeline 放进 NZ_POWER.MART）
+    sql_dialect: Literal["postgres", "doris", "duckdb", "snowflake"] = "postgres"
 
     pg_dsn: str = "postgresql://chemq_app:chemq@localhost:5432/chemq"
     pg_dsn_readonly: str = "postgresql://chemq_ro_login:chemq@localhost:5432/chemq"
@@ -64,6 +65,17 @@ class Settings(BaseSettings):
     # --- DuckDB ---
     duckdb_path: str = ""      # 服务库（make duckdb-serve 生成），引擎只读连它
     duckdb_source: str = ""    # dbt 产出的 DuckDB 文件路径（make duckdb-serve 的源）
+
+    # --- Snowflake（W2）--- 设计见 docs/10-flagship-plan.md 的 W2 一节
+    # 只读：角色 NZ_REPORTER 只能读 NZ_POWER.MART。用户是 TYPE=SERVICE，只能密钥对登录（没有密码这一项）。
+    # 私钥文件在仓库外、加密；密码短语放 .env（.claude/settings.json 禁止读 .env 和 ~/.snowflake/）。
+    snowflake_account: str = ""            # 账号标识 <组织名>-<账号名>
+    snowflake_user: str = ""               # 查询用的 SERVICE 用户
+    snowflake_private_key_path: str = "~/.snowflake/chemq_reporter.p8"
+    snowflake_private_key_password: str = ""
+    snowflake_role: str = "NZ_REPORTER"
+    snowflake_warehouse: str = "WH_XS"
+    snowflake_database: str = "NZ_POWER"
 
     statement_timeout_ms: int = 8000
     max_rows: int = 500

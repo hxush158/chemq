@@ -13,8 +13,14 @@ DOMAIN     ?= chem
 DOMAIN_DIR := domains/$(DOMAIN)
 QUERY_ENV = CHEMQ_DOMAIN="$(DOMAIN)" CHEMQ_PG_DSN_READONLY="$(DSN_RO)"
 
+# NZ 包默认走 DuckDB 服务库；DIALECT=snowflake 换成 Snowflake（账号、私钥等从 .env 读）
+DIALECT    ?=
 ifeq ($(DOMAIN),nz_power)
+ifeq ($(DIALECT),snowflake)
+QUERY_ENV += CHEMQ_SQL_DIALECT=snowflake
+else
 QUERY_ENV += CHEMQ_SQL_DIALECT=duckdb CHEMQ_DUCKDB_PATH="$(CURDIR)/domains/nz_power/data/serving.duckdb"
+endif
 endif
 
 # SQL 文件的路径。默认是容器内的挂载点（docker-compose.yml 把 domains/chem/data/ 挂到了这里）。
@@ -86,6 +92,7 @@ cases:           ## 列出评测题（一题一行）  用法: make cases  或  
 	@CHEMQ_DOMAIN="$(DOMAIN)" $(PY) ai/evals/list_cases.py "$(SET)"
 
 golden:          ## 只重算评测集标准答案（领域包 eval/ 下的 golden + holdout），不动数据库数据
+	@if [ -n "$(DIALECT)" ]; then echo "标准答案只用领域包的主方言生成（不传 DIALECT）；其他引擎用跨引擎比对核对"; exit 1; fi
 	$(QUERY_ENV) uv run --project ai --extra db --quiet python ai/evals/build_golden.py
 
 catalog:         ## 只重新生成语义层目录 + 数据覆盖区间
