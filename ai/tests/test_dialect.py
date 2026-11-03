@@ -8,7 +8,7 @@ sqlglot 的 AST 是方言无关的（exp.Select 就是 exp.Select），
 import pytest
 
 from chemq.config import settings
-from chemq.db import _ENGINES, DorisEngine, DuckDBEngine, PostgresEngine
+from chemq.db import _ENGINES, DorisEngine, DuckDBEngine, PostgresEngine, SnowflakeEngine
 from chemq.sqlguard import SENSITIVE_TOKENS_BY_DIALECT, check
 from chemq.text2sql import DIALECT_PROFILE, system_role
 
@@ -159,6 +159,7 @@ def test_engine_registry():
     assert _ENGINES["postgres"] is PostgresEngine
     assert _ENGINES["doris"] is DorisEngine
     assert _ENGINES["duckdb"] is DuckDBEngine
+    assert _ENGINES["snowflake"] is SnowflakeEngine
 
 # ---------- ⑥  Snowflake 特定测试 ----------
 

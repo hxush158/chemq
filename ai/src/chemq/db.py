@@ -142,6 +142,107 @@ class DorisEngine:
         raise NotImplementedError(self._TODO)
 
 
+class SnowflakeEngine:
+    dialect = "snowflake"
+
+    _BLOCKED_ROLES = {
+        "ACCOUNTADMIN",
+        "SYSADMIN",
+        "SECURITYADMIN",
+        "USERADMIN",
+        "ORGADMIN",
+    }
+
+    @staticmethod
+    def _timeout_seconds() -> int:
+        return max(1, (settings().statement_timeout_ms + 999) // 1000)
+
+    @contextmanager
+    def readonly_cursor(self, scope: str | None = None) -> Iterator[Any]:
+        scope_session_var(scope)
+        if scope:
+            raise ValueError("Snowflake 暂不支持 scope，不能忽略数据权限范围")
+
+        s = settings()
+        required = {
+            "CHEMQ_SNOWFLAKE_ACCOUNT": s.snowflake_account,
+            "CHEMQ_SNOWFLAKE_USER": s.snowflake_user,
+            "CHEMQ_SNOWFLAKE_PRIVATE_KEY_PATH": s.snowflake_private_key_path,
+            "CHEMQ_SNOWFLAKE_PRIVATE_KEY_PASSWORD": s.snowflake_private_key_password,
+        }
+
+        for name, value in required.items():
+            if not value.strip():
+                raise ValueError(f"请在 .env 中配置 {name}")
+
+        key_path = Path(s.snowflake_private_key_path).expanduser()
+        if not key_path.is_file():
+            raise FileNotFoundError("请检查 .env 中的 CHEMQ_SNOWFLAKE_PRIVATE_KEY_PATH")
+
+        role = s.snowflake_role.strip().upper()
+        if not role or role in self._BLOCKED_ROLES:
+            raise ValueError("请在 .env 中为 CHEMQ_SNOWFLAKE_ROLE 配置查询角色")
+
+        import snowflake.connector  # noqa: PLC0415
+
+        conn = snowflake.connector.connect(
+            account=s.snowflake_account,
+            user=s.snowflake_user,
+            authenticator="SNOWFLAKE_JWT",
+            private_key_file=str(key_path),
+            private_key_password=s.snowflake_private_key_password,
+            role=role,
+            warehouse=s.snowflake_warehouse,
+            database=s.snowflake_database,
+            schema=domain().schema_for("snowflake").upper(),
+            session_parameters={
+                "STATEMENT_TIMEOUT_IN_SECONDS": self._timeout_seconds(),
+                "QUERY_TAG": "chemq",
+            },
+            login_timeout=15,
+            network_timeout=15,
+        )
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT CURRENT_ROLE()")
+                row = cur.fetchone()
+                if not row or row[0] != role:
+                    raise PermissionError(
+                        f"Snowflake 当前角色是 {row[0] if row else None!r}，"
+                        f"配置的是 {role!r}；检查 .env 里的 CHEMQ_SNOWFLAKE_ROLE"
+                    )
+                yield cur
+            finally:
+                cur.close()
+        finally:
+            conn.close()
+
+    def run_query(
+        self,
+        sql: str,
+        scope: str | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        timeout = self._timeout_seconds()
+        with self.readonly_cursor(scope) as cur:
+            if params is None:
+                cur.execute(sql, timeout=timeout)
+            else:
+                cur.execute(sql, params, timeout=timeout)
+
+            if cur.description is None:
+                raise ValueError("查询没有返回结果集")
+
+            columns = [column[0].lower() for column in cur.description]
+            if len(columns) != len(set(columns)):
+                raise ValueError("查询返回了重复列名，请使用唯一的列别名")
+            return [dict(zip(columns, row, strict=True)) for row in cur.fetchall()]
+
+    def app_cursor(self) -> Any:
+        raise NotImplementedError("SnowflakeEngine 不支持写入审计表")
+
+
 class DuckDBEngine:
     """只读访问预先构建好的 DuckDB serving 库。"""
 
@@ -229,6 +330,7 @@ class DuckDBEngine:
 
 _ENGINES: dict[str, type] = {
     "postgres": PostgresEngine, "doris": DorisEngine, "duckdb": DuckDBEngine,
+    "snowflake": SnowflakeEngine,
 }
 
 
