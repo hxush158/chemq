@@ -179,6 +179,17 @@ class SnowflakeEngine:
         if not key_path.is_file():
             raise FileNotFoundError("请检查 .env 中的 CHEMQ_SNOWFLAKE_PRIVATE_KEY_PATH")
 
+        from cryptography.hazmat.primitives import serialization  # noqa: PLC0415
+        try:
+            serialization.load_pem_private_key(
+                key_path.read_bytes(),
+                password=s.snowflake_private_key_password.encode("utf-8"),
+            )  # 先验证私钥能解开，别等到连库才报错
+        except (ValueError, TypeError):
+            raise ValueError(
+                "私钥打不开，检查 .env 里的 CHEMQ_SNOWFLAKE_PRIVATE_KEY_PASSWORD"
+            ) from None
+    
         role = s.snowflake_role.strip().upper()
         if not role or role in self._BLOCKED_ROLES:
             raise ValueError("请在 .env 中为 CHEMQ_SNOWFLAKE_ROLE 配置查询角色")
@@ -186,6 +197,7 @@ class SnowflakeEngine:
         import snowflake.connector  # noqa: PLC0415
 
         conn = snowflake.connector.connect(
+            enable_server_session_keep_alive_auto_detection=False,
             account=s.snowflake_account,
             user=s.snowflake_user,
             authenticator="SNOWFLAKE_JWT",
@@ -200,7 +212,7 @@ class SnowflakeEngine:
                 "QUERY_TAG": "chemq",
             },
             login_timeout=15,
-            network_timeout=15,
+            request_timeout=15,
         )
         try:
             cur = conn.cursor()

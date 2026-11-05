@@ -31,7 +31,7 @@ PY         ?= uv run --quiet --no-project --with pyyaml python
 NZ_REPO    ?= $(HOME)/Projects/nz-power-pipeline
 
 .PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve sync-nz-metrics check-nz-metrics
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve sync-nz-metrics check-nz-metrics test-snowflake
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -141,6 +141,9 @@ ingest:          ## 知识文档写进库（先 aws login --profile chemq；make
 
 test:            ## 跑单元测试（SQL 护栏在这里）
 	cd ai && uv run pytest -q
+
+test-snowflake:  ## Snowflake 集成测试：真连 NZ_POWER（读 .env 里的账号和私钥；平时 make test 不跑它）
+	cd ai && CHEMQ_SNOWFLAKE_IT=1 CHEMQ_DOMAIN=nz_power CHEMQ_SQL_DIALECT=snowflake uv run pytest -q -m snowflake
 
 eval-dry:        ## 不调 API，只自检评测集
 	cd ai && uv run python evals/run_eval.py --week 6 --dry

@@ -3,14 +3,31 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from chemq import db
 
 
+@pytest.fixture(scope="module")
+def encrypted_private_key_pem():
+    private_key = rsa.generate_private_key(
+        public_exponent=65537, 
+        key_size=2048
+    )
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(
+            b"test-passphrase"
+        ),
+    )
+    
+
 @pytest.fixture
-def sf_config(tmp_path, monkeypatch):
+def sf_config(tmp_path, monkeypatch, encrypted_private_key_pem):
     key_path = tmp_path / "chemq_reporter.p8"
-    key_path.touch()
+    key_path.write_bytes(encrypted_private_key_pem)
 
     config = SimpleNamespace(
         snowflake_account="test-account",
@@ -91,6 +108,7 @@ def test_run_query_returns_rows(sf_connect):
         call("SELECT CURRENT_ROLE()"),
         call(sql, timeout=2),
     ]
+    assert kwargs["enable_server_session_keep_alive_auto_detection"] is False
 
 
 def test_scope_rejected_before_connect(sf_connect):
@@ -131,3 +149,15 @@ def test_query_error_closes_resources(sf_connect):
     assert exc.value is error
     cur.close.assert_called_once_with()
     conn.close.assert_called_once_with()
+
+def test_wrong_private_key_password_rejected_before_connect(
+        sf_config, sf_connect
+):
+    sf_config.snowflake_private_key_password = "wrong-passphrase"
+
+    with pytest.raises(
+        ValueError, 
+        match="CHEMQ_SNOWFLAKE_PRIVATE_KEY_PASSWORD"
+    ):
+        db.SnowflakeEngine().run_query("SELECT 1")
+    sf_connect.assert_not_called()
