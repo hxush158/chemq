@@ -22,6 +22,10 @@ import os
 
 import yaml
 
+from datetime import date
+
+from chemq.coverage import load_coverage
+
 from chemq.db import engine
 from chemq.domain import domain
 from chemq.prompts import render, string
@@ -49,10 +53,10 @@ def build() -> tuple[str, dict[str, str]]:
     cols: dict[str, list[tuple[str, str]]] = {n: [] for n in names}
     for t, c, typ in q(
         "SELECT table_name, column_name, data_type FROM information_schema.columns "
-        f"WHERE table_schema='{schema}' AND table_name IN ({_in(names)}) "
+                f"WHERE upper(table_schema) = upper('{schema}') AND upper(table_name) IN ({_in([n.upper() for n in names])}) "
         "ORDER BY table_name, ordinal_position"
     ):
-        cols[t].append((c, typ))
+        cols[t.lower()].append((c.lower(), typ))
     comments: dict[str, str] = {}
     if engine().dialect == "postgres":
         comments = {
@@ -113,18 +117,52 @@ def _replace(path, text: str) -> None:
 def main() -> None:
     d = domain()
     dialect = engine().dialect
+    text, coverage = build()                          # 先在内存里生成完，再一次性替换
+
+    actual_start = date.fromisoformat(coverage["start"])
+    actual_end = date.fromisoformat(coverage["end"])
+
+    if actual_start > actual_end:
+        raise ValueError("数据覆盖区间的开始日期不能晚于结束日期")
+
     if dialect == d.primary_dialect:
         catalog_path = d.catalog_path
-    else:
-        catalog_path = d.catalog_path_for(dialect)
-    text, coverage = build()                          # 先在内存里生成完，再一次性替换文件
+        catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        _replace(catalog_path, text)
 
-    catalog_path.parent.mkdir(parents=True, exist_ok=True)
-    _replace(catalog_path, text)
-    _replace(d.coverage_path, "# " + GENERATED[5:-4] + "\n" + "# 数据覆盖区间。Router / Agent 的提示词用它（router.data_range()）。\n"
-             + yaml.safe_dump(coverage, allow_unicode=True, sort_keys=False))
+        coverage_text = (
+            "# " + GENERATED[5:-4] + "\n"
+            "# 数据覆盖区间。Router / Agent 的提示词用它。\n"
+            + yaml.safe_dump(
+                coverage,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        )
+        _replace(d.coverage_path, coverage_text)
+
+        print(
+            f"✓ 共享数据覆盖区间："
+            f"{actual_start} ~ {actual_end} -> {d.coverage_path}"
+        )
+
+    else:
+        shared_start, shared_end = load_coverage()
+        print(f"{dialect} 实际区间：{actual_start} ~ {actual_end}")
+        print(f"共享区间：{shared_start} ~ {shared_end}")
+
+        if actual_start > shared_start or actual_end < shared_end:
+            raise RuntimeError(
+                f"{dialect} 的数据未完整覆盖 {d.coverage_path}："
+                f"实际区间 {actual_start} ~ {actual_end}，"
+                f"要求覆盖 {shared_start} ~ {shared_end}"
+            )
+
+        catalog_path = d.catalog_path_for(dialect)
+        catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        _replace(catalog_path, text)
+
     print(f"✓ 语义层目录已生成：{catalog_path}（{len(text)} 字符）")
-    print(f"✓ 数据覆盖区间：{coverage['start']} ~ {coverage['end']} -> {d.coverage_path}")
 
 
 if __name__ == "__main__":
