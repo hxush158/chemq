@@ -103,9 +103,9 @@ def build(
             source_rows = con.execute(
                 f"SELECT count(*) FROM {source_table}{where}",
                 params,
-            ).fetchone()[0]
+            ).fetchone()[0] # type: ignore
 
-            copied_rows = con.execute(f'SELECT count(*) FROM main."{name}"').fetchone()[
+            copied_rows = con.execute(f'SELECT count(*) FROM main."{name}"').fetchone()[ # type: ignore
                 0
             ]
 
