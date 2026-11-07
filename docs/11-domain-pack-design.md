@@ -224,3 +224,10 @@ W1 完成（10/31，提交 `6815fdc`）：chem pipeline 20/20、chem agent 20/20
 - **`run_eval` 的开头和报告里写上领域和方言**：W1 时跑错过一次领域，单看输出看不出来
 - **Critic 的正则搬回 `critic.py`**：现在放在 `strings.yaml` 里，按语言分两套写成代码里的表；en 日期正则去掉 `x` 标志
 - **英文 Router 的时间规则只有按月的**："最近 N 天"现在只靠示例 3 教；日级题出错就给模板补一条日级规则
+
+### 待办（W2 收尾时攒下的）
+
+- **`run_eval` 的 citation_acc 误报升级**（上一组已有这条）：现在 `make eval` 会因此退出码 2，脚本或 CI 里会被当成失败。W3 第一件事
+- **Snowflake 版目录的数字类型没有精度**：`information_schema` 只写 `NUMBER`。只在 `data_type == 'NUMBER'` 时用 `numeric_precision` / `numeric_scale` 拼成 `NUMBER(18,2)`，chem 不受影响
+- **Snowflake 每次查询都新建连接**：p95 比 DuckDB 高约 3 秒。评测题多了以后考虑进程内复用连接（注意 Agent 用 `to_thread`，连接不能跨线程共用）
+- **`.env` 里的 Snowflake 账号标识**：不进仓库；W4 部署如果要演示 Snowflake，用部署平台的密钥管理，不放镜像里

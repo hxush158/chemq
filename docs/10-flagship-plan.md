@@ -89,6 +89,43 @@ W2 验收：同一道题在 DuckDB 和 Snowflake 上结果一致；chem 不退�
 
 ## 三项接口（W1 内定稿，两边对着做）
 
+### W2 结果（11/7）：验收达成
+
+**步骤和提交**
+
+| 步 | 内容 | 提交 |
+|---|---|---|
+| 1 | snowflake 方言 + sqlguard（拒三段式全名、AST 拦 `IDENTIFIER()`）；schema 按方言配置（NZ：`main` / `MART`） | `9ce721d` |
+| 2–3 | SnowflakeEngine（密钥对、连库前先打开私钥、拒高权限角色、连上后核对角色、超时、列名转小写）；9 条集成测试 `make test-snowflake` | `438f388` `f489cb2` `2f8096b` |
+| 4a | Snowflake 版语义层目录（`information_schema` 大小写不敏感；`coverage.yaml` 只由主方言写，其他引擎的区间必须覆盖它） | `267c019` |
+| 4b | 跨引擎比对 `make cross-check`：标准答案（DuckDB 生成）和 Snowflake 结果逐行比，不设容差 | `7b8c6f0` |
+
+**验收结果**
+- 权限（直连 Snowflake、绕过 sqlguard）：`CHEMQ_REPORTER` / `NZ_REPORTER` 能读 MART 三个对象；读 CORE、RAW 被拒（002003）；`INSERT` / `CREATE TABLE` / `CREATE VIEW` 被拒（003001）。快照一致：2,156,450 行、137078471.80
+- 跨引擎比对：N001–N004 四道取数题 SAME，N005（拒答题）跳过；护栏没有误拦翻译后的 SQL
+- 端到端评测（pipeline，golden 5 题）：
+
+| 引擎 | 结果 | 成本 | p95 |
+|---|---|---|---|
+| DuckDB（服务库） | 5/5（intent / exec / refuse 全 1.0） | $0.0219 | 6.9 s |
+| Snowflake（`NZ_POWER.MART`） | 5/5（intent / exec / refuse 全 1.0） | $0.0403 | 10.1 s |
+
+  Snowflake 慢约 3 秒：每次查询新建连接 + 密钥认证，warehouse 空闲 60 秒挂起后第一条要等恢复。
+  成本高的那部分推测是提示缓存冷启动（Snowflake 版目录第一次进提示词）；DuckDB 第一次跑也是 $0.04 左右。
+- chem：提示词快照全过（提示词一个字没变）；sqlguard 的改动有回归测试。W2 没有重跑 chem 评测
+
+**跨引擎比对抓到的真问题**：`mart_daily_price.avg_price` 在 DuckDB 上用 `avg(DECIMAL)`，结果是 DOUBLE，
+"均值恰好 x.xx5"时会舍错。真实数据 44,927 行里错了 43 行（全部少 0.01）；在 0–1000 的相邻两分价格对里，旧写法约 4.6% 舍错。
+nz-power `a57681a` 改成整数"分"运算、四舍五入远离零（和 Snowflake `ROUND` 一致），两个引擎逐行一致，加了 4 个单元测试。
+ChemQ 重建服务库、重算标准答案后零 diff（N001 不在那 43 行里）。
+
+**这周的经验**
+1. 动手建基础设施之前，先看对方是不是已经建好了：Snowflake 差点建了两套（我起草的初始化 SQL 和 nz-power 的 Terraform 重复，执行前发现）
+2. 换依赖、换版本后先跑最小的连通测试：snowflake-connector-python 5.x 在密码短语错误时只报 `Authentication failed. Unspecified`，请求没到 Snowflake、登录记录里什么都没有，排查花了半天。引擎现在连库前先自己打开私钥
+3. 密码短语生成时就存进密码管理器；写进 `.env` 后用读取 `.env` 的方式验证，不要手敲再验证
+4. `uv sync` 会让环境完全等于列出的依赖组：只写 `--extra dev --extra db` 会卸掉 agent 等依赖。用 `make install-all`
+5. 跨引擎"结果一致"要逐行比、不设容差，才抓得到 0.01 这种差异
+
 ### 1. 数据库适配器（沿用 `db.py` 的 Engine 协议）
 
 现有协议：`dialect`、`readonly_cursor(region)`、`run_query(sql, region, params)`、`app_cursor()`。
