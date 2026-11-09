@@ -125,7 +125,7 @@ def verify(
     objects: dict[str, str | None],
     snapshot: dict,
 ) -> None:
-    """检查对象集合、独立可读性，以及固定的 NZ 价格快照。"""
+    """检查对象集合、独立可读性，以及价格和可选的发电快照。"""
     actual = set(con.execute("""
             SELECT table_schema, table_name, table_type
             FROM information_schema.tables
@@ -165,6 +165,57 @@ def verify(
             f"price_sum={total}，期望 {expected_total}"
         )
 
+    # 发电量：domain.yaml 的 eval.snapshot 里有核对值，才检查
+    if "generation_kwh_sum" in snapshot:
+        # 1. mart_daily_generation 必须在 objects 里，不在就 raise ValueError
+        if "mart_daily_generation" not in objects:
+            raise ValueError("加权发电快照校验需要 mart_daily_generation 表")
+
+        # 2. 用 SQL 求 sum(generation_kwh)，结果转成 int
+        actual_sum = con.execute("""
+            SELECT sum(generation_kwh)
+            FROM main."mart_daily_generation"
+            """).fetchone()[0]
+        
+        # 3. 和 int(snapshot["generation_kwh_sum"]) 比，不等就 raise RuntimeError，写明实际值和期望值
+        expected_sum = int(snapshot["generation_kwh_sum"])
+        if actual_sum is None or int(actual_sum) != expected_sum:
+            raise RuntimeError(
+                f"mart_daily_generation 快照不符："
+                f"generation_kwh_sum={actual_sum}，期望 {expected_sum}"
+            )
+
+    # 加权发电表的两个核对值必须成对出现：只配一个时直接说清楚缺哪个
+    weighted_keys = ("weighted_generation_kwh_sum", "weighted_rows")
+    present = [k for k in weighted_keys if k in snapshot]
+    if present and len(present) < len(weighted_keys):
+        missing = [k for k in weighted_keys if k not in snapshot]
+        raise ValueError(
+            f"eval.snapshot 里 {present} 和 {missing} 要成对配置，现在缺 {missing}"
+        )
+
+    if present:
+        if "mart_daily_generation_weighted_price" not in objects:
+            raise ValueError("加权发电快照校验需要 mart_daily_generation_weighted_price")
+        # 一条 SQL 同时查 count(*) 和 sum(generation_kwh)
+        actual_count, actual_weighted_sum = con.execute("""
+            SELECT count(*), sum(generation_kwh)
+            FROM main."mart_daily_generation_weighted_price"
+        """).fetchone()
+        # 分别和 weighted_rows、weighted_generation_kwh_sum 比
+        expected_count = int(snapshot["weighted_rows"])
+        expected_weighted_sum = int(snapshot["weighted_generation_kwh_sum"])
+        if (
+            actual_count != expected_count
+            or actual_weighted_sum is None
+            or int(actual_weighted_sum) != expected_weighted_sum
+        ):
+            raise RuntimeError(
+                f"mart_daily_generation_weighted_price 快照不符："
+                f"weighted_rows={actual_count}，期望 {expected_count}；"
+                f"weighted_generation_kwh_sum={actual_weighted_sum}，"
+                f"期望 {expected_weighted_sum}"
+            )
 
 def main() -> None:
     d = domain()

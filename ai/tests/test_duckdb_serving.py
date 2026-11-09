@@ -67,6 +67,63 @@ def publish_env(builder, tiny_source_db, tmp_path, monkeypatch):
     )
 
 
+@pytest.fixture
+def generation_publish_env(builder, publish_env):
+    e= publish_env
+
+    with duckdb.connect(str(e.source)) as con:
+        con.execute("""
+            CREATE TABLE mart_daily_generation (
+                trading_date DATE,
+                generation_kwh BIGINT
+            )
+        """)
+        con.execute("""
+            INSERT INTO mart_daily_generation VALUES
+                (DATE '2026-09-29', 100),
+                (DATE '2026-09-30', 200),
+                (DATE '2026-10-01', 999)
+        """)
+
+        con.execute("""
+            CREATE TABLE mart_daily_generation_weighted_price (
+                trading_date DATE,
+                generation_kwh BIGINT
+            )
+        """)
+        con.execute("""
+            INSERT INTO mart_daily_generation_weighted_price VALUES
+                (DATE '2026-09-29', 90),
+                (DATE '2026-09-30', 180),
+                (DATE '2026-10-01', 999)
+        """)
+
+        generation_objects = {
+        "mart_daily_generation": "trading_date",
+        "mart_daily_generation_weighted_price": "trading_date",
+    }
+
+    e.objects.update(generation_objects)
+    builder.domain().catalog["views"].extend(generation_objects)
+
+    e.snapshot.update({
+        "generation_kwh_sum": "300",
+        "weighted_generation_kwh_sum": "270",
+        "weighted_rows": 2,
+    })
+
+    return e
+
+@pytest.mark.parametrize("dropped", ["weighted_rows", "weighted_generation_kwh_sum"])
+def test_weighted_snapshot_keys_must_come_in_pairs(builder, generation_publish_env, dropped):
+    e = generation_publish_env
+    del e.snapshot[dropped]
+
+    with pytest.raises(ValueError, match=dropped):
+        builder.main()
+
+    assert not e.target.exists()      # 没有发布任何库
+
 # 1. 精确比较对象集合：不能只断言 len(...) == 3。
 def test_only_whitelisted_tables(built_db):
     with duckdb.connect(str(built_db), read_only=True) as con:
@@ -210,3 +267,79 @@ def test_source_and_tmp_cannot_share_name(builder, tiny_source_db, tmp_path):
     with pytest.raises(ValueError, match="同名"):
         builder.build(src, out, OBJECTS, AS_OF)
     assert not out.exists()                      # 没有创建任何文件
+
+
+# 9. 快照正确时发布成功
+def test_generation_snapshot_publish_database(
+        builder, generation_publish_env
+):
+    e = generation_publish_env
+    assert not e.target.exists()
+
+    builder.main()
+    
+    assert e.target.is_file()
+    assert set(e.target.parent.iterdir()) == {e.target}
+
+    with duckdb.connect(str(e.target), read_only=True) as con:
+        assert con.execute("""
+            SELECT trading_date, generation_kwh
+            FROM main."mart_daily_generation"
+            ORDER BY trading_date
+        """).fetchall() == [
+            (date(2026, 9, 29), 100),
+            (AS_OF, 200),
+        ]
+
+        assert con.execute("""
+            SELECT trading_date, generation_kwh
+            FROM main."mart_daily_generation_weighted_price"
+            ORDER BY trading_date
+        """).fetchall() == [
+            (date(2026, 9, 29), 90),
+            (AS_OF, 180),
+        ]
+
+# 10. 总和故意写大1，失败后保留旧库
+def test_wrong_generation_snapshot_preserves_old_database(
+        builder, generation_publish_env
+):
+    e = generation_publish_env
+
+    # 先生成旧库
+    builder.main()
+
+    # 给旧库设置一个明显不同的值，便于识别它是否被替换
+    with duckdb.connect(str(e.target)) as con:
+        con.execute("""
+            UPDATE main."mart_daily_generation"
+            SET generation_kwh = 50
+            WHERE trading_date = DATE '2026-09-29'
+        """)
+
+    old_bytes = e.target.read_bytes()
+
+    # 临时新库的实际总和是300，故意要求301
+    e.snapshot["generation_kwh_sum"] = "301"
+
+    with pytest.raises(
+        RuntimeError, 
+        match=r"generation_kwh_sum=300.*期望 301",
+    ):
+        builder.main()
+
+    assert e.target.read_bytes() == old_bytes
+    assert set(e.target.parent.iterdir()) == {e.target}
+
+    with duckdb.connect(str(e.target), read_only=True) as con:
+        assert con.execute("""
+            SELECT trading_date, generation_kwh
+            FROM main."mart_daily_generation"
+            ORDER BY trading_date
+        """).fetchall() == [
+            (date(2026, 9, 29), 50),
+            (AS_OF, 200),
+        ]
+
+
+   
