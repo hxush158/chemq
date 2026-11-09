@@ -1,7 +1,7 @@
-# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ 7f49ea6
-# sha256 88f8d83949072cdbf69c805561c01660e42f10accadba34e1cb59dec202fc795  (do not edit here: change it upstream, then make sync-nz-metrics)
+# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ a12252e
+# sha256 30dd028f6a7b1689d3fda63d329083d2f04c0370391817996e280198e665b2ab  (do not edit here: change it upstream, then make sync-nz-metrics)
 # NZ electricity price metrics. Query only the views listed under `views`; never query fact_* or dim_* tables.
-version: "2026-10"
+version: "2026-11"
 owner: "nz-power-pipeline"
 
 conventions:
@@ -11,7 +11,9 @@ conventions:
   price_unit: "NZD per MWh, 2 decimal places. Negative prices are real data; do not filter them out."
   price_version: "A period and node can have an interim price first and a final price later. Use mart_current_price, which already picks final when available and interim otherwise."
   node_id: "Node ids are upper-case strings such as ABY0111, not numbers."
-  not_available: "There is no volume, demand or generation data yet, so volume-weighted prices cannot be computed. Node name, island and region are NULL, so results cannot be grouped by island or region."
+  fuel: "Fuel is one of Hydro, Wind, Geothermal, Solar, Gas, Coal, Diesel, Wood, Battery storage. Source codes use two spellings (for example Hydro and HYD); they are already unified."
+  generation: "Generation figures are EMI estimates (metered grid injections mapped to plants), in kWh per trading period; divide by 1000 for MWh. They come from mart_daily_generation and mart_daily_generation_weighted_price."
+  not_available: "There is no demand or consumption volume data, so demand-weighted (load-weighted) prices cannot be computed. weighted_avg_price is a different, supply-side measure: it is weighted by generation. Island, zone and region come from EMI's Network Supply Points table (snapshot 2026-11-06): group by island (NI/SI) or zone (UNI/LNI/CNI/USI/LSI) through v_dim_node; region (distribution network area) is NULL for the 18 transmission-grid nodes, and zone is NULL for node KAW2201 (missing in the source)."
 
 views:
   - view: mart_current_price
@@ -24,8 +26,16 @@ views:
     keys: [trading_date, node_id]
   - view: v_dim_node
     grain: "one row per node"
-    description: "Node dimension plus the first trading day the node appears in the data."
+    description: "Node dimension (name, island, zone, region) plus the first trading day the node appears in the data."
     keys: [node_id]
+  - view: mart_daily_generation
+    grain: "one row per trading day per island, zone and fuel"
+    description: "Estimated generation (kWh) and number of plants by trading day, island, zone and fuel. Includes plants at nodes with no price; their island and zone are NULL."
+    keys: [trading_date, island, zone, fuel]
+  - view: mart_daily_generation_weighted_price
+    grain: "one row per trading day per island and fuel"
+    description: "Generation-weighted average price by trading day, island and fuel: the average price at which that fuel's generation was sold. Covers only generation at nodes with a price."
+    keys: [trading_date, island, fuel]
 
 metrics:
   - name: Period price
@@ -114,3 +124,61 @@ metrics:
     pitfalls:
       - "NULL means the node already existed at the start of the data (a baseline node) and its real start date is unknown; it does not mean the node has no data."
       - "It is the first date in this data set, not necessarily when the node actually began operating."
+
+  - name: Daily generation
+    en: generation_kwh
+    aliases: ["generation", "output", "electricity generated", "supply by fuel"]
+    unit: kWh
+    view: mart_daily_generation
+    column: generation_kwh
+    definition: Estimated electricity generated on one trading day, grouped by island, zone and fuel, in kWh.
+    pitfalls:
+      - "An EMI estimate (metered grid injections mapped to plants), not figures reported by the plants."
+      - "kWh, not MWh: divide by 1000 for MWh and by 1,000,000 for GWh."
+      - "Includes plants at nodes that have no price (for example WPG0331); their island and zone are NULL, so adding up only the rows with an island leaves them out."
+      - "Battery storage appears as a fuel; do not read its figure as renewable generation."
+
+  - name: Number of generating plants
+    en: plant_count
+    aliases: ["number of plants", "plants generating"]
+    unit: plants
+    view: mart_daily_generation
+    column: plant_count
+    definition: Number of distinct plants (by plant code) with generation records for that day, island, zone and fuel.
+    pitfalls:
+      - "A plant connected at several nodes or networks is counted once per row group, so plant counts of different rows can overlap if a plant appears in more than one island or zone."
+
+  - name: Generation-weighted average price
+    en: weighted_avg_price
+    aliases: ["generation-weighted price", "price received by fuel", "average price by fuel", "capture price"]
+    unit: NZD/MWh
+    view: mart_daily_generation_weighted_price
+    column: weighted_avg_price
+    definition: Average price at which a fuel's generation was sold on one trading day in one island, weighted by the estimated generation in each trading period at each node, rounded to 2 decimals.
+    pitfalls:
+      - "This is a supply-side price, not a demand-weighted price and not the average price consumers pay: there is still no demand or consumption volume data."
+      - "Covers only generation at nodes that have a price (about 99.6 percent of all generation for 2026-04 to 2026-09); compare priced_generation_kwh here with generation_kwh in mart_daily_generation."
+      - "NULL when the fuel's generation weight for that day is 0."
+      - "If interim_generation_kwh is greater than 0, part of the price is still interim and may be revised."
+      - "Do not average several days of weighted_avg_price with a plain average; weight each day by priced_generation_kwh."
+      - "Prices can be negative; do not filter them."
+
+  - name: Generation with a price
+    en: priced_generation_kwh
+    aliases: ["priced generation", "weights"]
+    unit: kWh
+    view: mart_daily_generation_weighted_price
+    column: generation_kwh
+    definition: Estimated generation (kWh) that has a price, that is the weights behind weighted_avg_price for the same day, island and fuel.
+    pitfalls:
+      - "Smaller than generation_kwh in mart_daily_generation because generation at nodes with no price is left out."
+
+  - name: Generation priced with interim prices
+    en: interim_generation_kwh
+    aliases: ["interim-priced generation"]
+    unit: kWh
+    view: mart_daily_generation_weighted_price
+    column: interim_generation_kwh
+    definition: Part of priced_generation_kwh whose price is still interim. 0 means weighted_avg_price is based entirely on final prices.
+    pitfalls:
+      - "Use this to decide whether a weighted price is final; do not infer it from the date."

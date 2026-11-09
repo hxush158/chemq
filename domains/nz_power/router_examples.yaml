@@ -1,5 +1,6 @@
 # Router 的 few-shot 示例（NZ 电力）。格式同 domains/chem/router_examples.yaml。
 # ⚠ 不要写评测题原话，也别用评测题的节点 + 日期组合（eval/cases.yaml 用了 OTA2201 / HAY2201 / BEN2201）。
+# ⚠ 出评测题时反过来也要避开这里的组合：ISL2201、WKM2201；SI 8 月按燃料；NI 风电 7 月加权价；地热 5/1。
 # 指标名用 metric_dictionary.yaml 里的 name。基准时间的写法要和 pipeline 给 Router 的前缀一致（第 5 项改成按语言取）。
 - note: '(one node, one trading day)'
   question: |-
@@ -30,9 +31,24 @@
   question: |-
     Base date: 2026-09-30
     User question: What was the volume-weighted average price at WKM2201 last month?
-  plan: '{"intent": "out_of_scope", "metrics": ["volume-weighted average price"], "needs_knowledge": false, "reasoning": "There is no volume data, so a volume-weighted price is not in the metric dictionary. The daily average price is a simple average and must not be used instead."}'
+  plan: '{"intent": "out_of_scope", "metrics": ["volume-weighted average price"], "needs_knowledge": false, "reasoning": "There is no demand or consumption volume, so a demand-weighted price for a node cannot be computed. The generation-weighted average price is a different, supply-side measure by island and fuel, and the daily average price is a simple average; neither may be used instead."}'
 - note: '(refuse: not price data at all)'
   question: |-
     Base date: 2026-09-30
     User question: How much electricity did New Zealand use yesterday?
-  plan: '{"intent": "out_of_scope", "metrics": ["demand"], "needs_knowledge": false, "reasoning": "Demand and generation are not in the metric dictionary; only prices are available."}'
+  plan: '{"intent": "out_of_scope", "metrics": ["demand"], "needs_knowledge": false, "reasoning": "Demand and consumption are not in the metric dictionary; only prices and generation are available."}'
+- note: '(generation by fuel for one island over a month)'
+  question: |-
+    Base date: 2026-09-30
+    User question: Which fuel generated the most electricity in the South Island in August?
+  plan: '{"intent": "metric_query", "metrics": ["Daily generation"], "dimensions": ["fuel"], "filters": {"island": "SI"}, "time_range": {"start": "2026-08-01", "end": "2026-08-31", "grain": "month"}, "needs_knowledge": false, "reasoning": "Generation by fuel for one island over August 2026: add up the daily generation for the month per fuel, then take the largest."}'
+- note: '(generation-weighted price over several days: weight by priced generation, never average the daily values)'
+  question: |-
+    Base date: 2026-09-30
+    User question: At what average price was North Island wind generation sold in July?
+  plan: '{"intent": "metric_query", "metrics": ["Generation-weighted average price", "Generation with a price"], "filters": {"island": "NI", "fuel": "Wind"}, "time_range": {"start": "2026-07-01", "end": "2026-07-31", "grain": "month"}, "needs_knowledge": false, "reasoning": "Supply-side price for one fuel and island over July 2026. Across several days it must be weighted by Generation with a price, not a simple average of the daily weighted prices."}'
+- note: '(units: generation is stored in kWh)'
+  question: |-
+    Base date: 2026-09-30
+    User question: How many MWh did geothermal plants generate on 1 May?
+  plan: '{"intent": "metric_query", "metrics": ["Daily generation"], "filters": {"fuel": "Geothermal"}, "time_range": {"start": "2026-05-01", "end": "2026-05-01", "grain": "day"}, "needs_knowledge": false, "reasoning": "One fuel on one trading day, all islands. Generation is stored in kWh; the question asks for MWh, so divide by 1000."}'

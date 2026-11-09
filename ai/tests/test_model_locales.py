@@ -92,7 +92,10 @@ def test_model_messages_and_schemas_follow_domain(runtime):
     assert r["system_dictionaries"] == [r["dictionary"]] * 2
     assert r["tool_metrics"].startswith(r["dictionary"] + "\n\n")
     dimensions = r["schemas"][0]["properties"]["dimensions"]["description"]
-    assert dimensions == ("For example: node_id" if english else "如 装置/产品/大区/客户")
+    from chemq.domain import load_domain  # noqa: PLC0415
+
+    slot = load_domain("nz_power" if english else "chem").config["prompt_slots"]["dimension_examples"]
+    assert dimensions == (f"For example: {slot}" if english else f"如 {slot}")
     if english:
         for text in [r["sql_user"], r["kb_user"], r["schemas"]]:
             assert not re.search(r"[\u4e00-\u9fff]", json.dumps(text, ensure_ascii=False))

@@ -309,11 +309,11 @@ def test_nz_schema_is_per_dialect(monkeypatch, dialect, expected_schema):
     d = load_domain("nz_power")
 
     assert d.schema == expected_schema
-    assert d.allowed_relations == (
-        f"{expected_schema}.mart_current_price",
-        f"{expected_schema}.mart_daily_price",
-        f"{expected_schema}.v_dim_node",
-    )
+    # 白名单 = 领域包 catalog.views 逐个加上当前方言的 schema。对象清单以 domain.yaml 为准，这里不写死，
+    # 数据底座加表时只改 domain.yaml（11/9 加了两张发电表时，写死的清单让这条测试白白失败了一次）。
+    views = d.catalog["views"]
+    assert "mart_current_price" in views
+    assert d.allowed_relations == tuple(f"{expected_schema}.{v}" for v in views)
 
 # ---------- ⑧ chem 回归测试，检查它在支持的两个方言下，白名单和正常查询结果保持一致 ----------
 def test_chem_relations_do_not_change(monkeypatch):
