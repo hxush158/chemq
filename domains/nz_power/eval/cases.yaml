@@ -8,9 +8,11 @@
 #   - 不要和 router_examples.yaml 用同一个节点 + 日期
 #   - 不要出指标字典里写着答案的例子：北岛 2026-04-08 的平均价（162.08，162 个节点）、
 #     南岛 2026-07-15 各节点日均价的范围（7.78 ~ 61.88）—— 字典进提示词，等于把答案给了模型
+# method：每题一句话的算法说明，口径送审用（make review-golden）。只写算法，不写 SQL；不写的话送审脚本会报错。
 
 - set: golden
   id: N001
+  method: OTA2201 在 2026-09-20 的 mart_daily_price.avg_price（该节点当天各时段价格的简单平均，保留 2 位）
   week: 1
   difficulty: easy
   intent: metric_query
@@ -19,6 +21,7 @@
   sql: SELECT avg_price AS v FROM mart_daily_price WHERE node_id = 'OTA2201' AND trading_date = DATE '2026-09-20'
 - set: golden
   id: N002
+  method: HAY2201 在 2026-04-05 的 mart_daily_price.period_count（当天有价格的时段数）
   week: 1
   difficulty: medium
   intent: metric_query
@@ -28,6 +31,7 @@
   note: 夏令时结束那天，答案是 50，不是 48
 - set: golden
   id: N003
+  method: BEN2201 在 2026-09-26 的 mart_current_price 里价格最高的那一行，返回时段号和价格
   week: 1
   difficulty: medium
   intent: metric_query
@@ -37,6 +41,7 @@
   note: 这天上游同时有 interim 和 final 两份文件，mart_current_price 取 final；直接查 fact 表会重复
 - set: golden
   id: N004
+  method: v_dim_node 里 first_seen_date 在 2026-04-01 ~ 2026-09-30 之间的节点，返回节点和首次出现日期
   week: 1
   difficulty: medium
   intent: metric_query
@@ -46,6 +51,7 @@
   note: 答案是 OHG1101、WHU1101。first_seen_date 为 NULL 的是数据开始时就有的节点，不算
 - set: golden
   id: N005
+  method: 对 SI（v_dim_node.island）在 2026-08-15 的 mart_current_price 行直接平均（每个节点时段价格计一次），保留 2 位，并数节点数
   week: 1
   difficulty: medium
   intent: metric_query

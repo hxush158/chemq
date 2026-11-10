@@ -23,6 +23,10 @@ catalog:
 
 eval:
   as_of: "2026-09-30"
+  # 判分误差（run_eval）：typed = 按标准答案的写法区分 —— 没有小数点的必须完全相等；
+  # 1–2 位小数的绝对误差不超过 0.01；更多位的相对误差 0.5%。不写 = 一律相对误差 0.5%（chem 用的就是这个）。
+  # nz-power 11/10 的建议：0.5% 对发电量（kWh）和价格都太宽，口径陷阱题会测不出来。
+  tolerance: typed
   snapshot:
     rows: 2156450               # mart_current_price 的行数
     price_sum: "137078471.80"   # sum(CAST(price_nzd_per_mwh AS DECIMAL(18, 2)))

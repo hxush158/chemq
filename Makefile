@@ -31,7 +31,7 @@ PY         ?= uv run --quiet --no-project --with pyyaml python
 NZ_REPO    ?= $(HOME)/Projects/nz-power-pipeline
 
 .PHONY: help doctor doctor-w1 up down logs seed cases golden catalog reset psql sql \
-        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve sync-nz-metrics check-nz-metrics test-snowflake cross-check
+        install install-db install-rag install-agent install-all mcp agent agent-c ingest ingest-dry test eval eval-dry eval-rag eval-kb critic-lab runs-kb agg agg-vs runs lint clean duckdb-serve sync-nz-metrics check-nz-metrics test-snowflake cross-check review-golden
 
 help:            ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -101,6 +101,9 @@ catalog:         ## 只重新生成语义层目录 + 数据覆盖区间
 cross-check:     ## 跨引擎比对：标准答案（主方言生成）和另一个引擎的结果逐行比对  用法: make cross-check DOMAIN=nz_power DIALECT=snowflake
 	@if [ -z "$(DIALECT)" ]; then echo "要指定和主方言比对的引擎：make cross-check DOMAIN=nz_power DIALECT=snowflake"; exit 1; fi
 	$(QUERY_ENV) uv run --project ai --extra db --quiet python ai/evals/compare_engine.py
+
+review-golden:   ## 生成 golden 题的口径送审表（题目、算法说明、标准答案前 5 行；不含参考 SQL 和 holdout）  用法: make review-golden DOMAIN=nz_power
+	CHEMQ_DOMAIN="$(DOMAIN)" uv run --project ai --quiet python ai/evals/review_golden.py
 
 reset:           ## 连 volume 一起删掉重来（数据全没，慎用）
 	docker compose down -v

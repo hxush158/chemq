@@ -32,3 +32,5 @@ Claude outputs/
 # DuckDB 服务库（make duckdb-serve 生成）：几十 MB，随时能从 dbt 库重建，不进仓库
 domains/*/data/*.duckdb
 *.duckdb.wal
+# 口径送审表（make review-golden 生成）：送审前现生成，不进仓库
+domains/*/eval/review_*.md
