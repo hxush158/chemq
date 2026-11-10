@@ -1,7 +1,7 @@
-# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ 407778a
-# sha256 65b712601db5fe6637a592956d2391cc102bdeecd47cd3c8d8d5ae240b46f418  (do not edit here: change it upstream, then make sync-nz-metrics)
+# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ 54bc8fe
+# sha256 d26de10a01dc0b34e40fe29260b2bd46aaa6d65c30d06e52ea521956b9df73cc  (do not edit here: change it upstream, then make sync-nz-metrics)
 # NZ electricity price metrics. Query only the views listed under `views`; never query fact_* or dim_* tables.
-version: "2026-11.1"
+version: "2026-11.2"
 owner: "nz-power-pipeline"
 
 conventions:
@@ -13,7 +13,7 @@ conventions:
   node_id: "Node ids are upper-case strings such as ABY0111, not numbers."
   fuel: "Fuel is one of Hydro, Wind, Geothermal, Solar, Gas, Coal, Diesel, Wood, Battery storage. Source codes use two spellings (for example Hydro and HYD); they are already unified."
   generation: "Generation figures are EMI estimates (metered grid injections mapped to plants), in kWh per trading period; divide by 1000 for MWh. They come from mart_daily_generation and mart_daily_generation_weighted_price."
-  cross_node_average: "An average of node prices across nodes (for example by island or zone) is a simple, unweighted average: every node counts equally whatever its size or load, and the set of nodes can change over time because new nodes appear. It is supported, but always say that it is an unweighted simple average of node prices and give the number of nodes it covers; never present it as a market price, a reference price or the price consumers pay. Nodes differ a lot within an island on the same day (for example, daily average prices of South Island nodes on 2026-07-15 ran from 7.78 to 61.88 NZD/MWh)."
+  cross_node_average: "An average of node prices across nodes (for example by island or zone, for one day or several) is computed one way only: average the mart_current_price rows in scope directly, so every node-period price counts once. Do not average per-node daily averages (avg_price) and do not average daily averages across days. It is unweighted (no volume data), and a node with missing periods, such as a new node on its first day, contributes fewer rows; the set of nodes can also change over time. It is supported, but always say that it is an unweighted simple average of node prices and give the number of nodes and the date range it covers; never present it as a market price, a reference price or the price consumers pay. Worked example: North Island on 2026-04-08 has 162 nodes and 7,755 price rows (WHU1101 first appears that day with 27 of 48 periods), and the average is 162.08 NZD/MWh. Nodes also differ a lot within an island on the same day (for example, daily average prices of South Island nodes on 2026-07-15 ran from 7.78 to 61.88 NZD/MWh)."
   reference_nodes: "New Zealand has nodal pricing and there is no single national price. The usual benchmark nodes are OTA2201 (Otahuhu, North Island) and BEN2201 (Benmore, South Island); this is market convention, not something stored in the data. For a question about the national or island price level, say there is no single national price and give the prices at OTA2201 and BEN2201; only if the user insists, add the all-node simple average together with the caveat in cross_node_average."
   not_available: "There is no demand or consumption volume data, so demand-weighted (load-weighted) prices cannot be computed. weighted_avg_price is a different, supply-side measure: it is weighted by generation. Island, zone and region come from EMI's Network Supply Points table (snapshot 2026-11-06): group by island (NI/SI) or zone (UNI/LNI/CNI/USI/LSI) through v_dim_node (see cross_node_average for how to describe an average across nodes); region (distribution network area) is NULL for the 18 transmission-grid nodes, and zone is NULL for node KAW2201 (missing in the source)."
 
