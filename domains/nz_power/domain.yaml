@@ -58,6 +58,9 @@ prompt_slots:
         are aliases of the daily maximum price and are supported; generation by fuel, island or zone is supported.
         "Generation-weighted average price" is a supply-side price by island and fuel; it is NOT a demand-weighted
         or "volume-weighted" price for a node or for consumers, which is out of scope.
+        An average price by island or zone is supported (an unweighted simple average across nodes; see the
+        cross_node_average convention). A question about the "national price" is NOT out of scope: answer it with
+        the two benchmark nodes OTA2201 and BEN2201 (see the reference_nodes convention).
   no_hardcode_examples: the number of trading periods in a day or a list of node ids
   filter_dimensions: node_id, node_name, island, zone, fuel
   dimension_examples: node_id, island, zone, fuel

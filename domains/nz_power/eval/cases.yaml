@@ -6,6 +6,8 @@
 #   - 查出 0 行的题（OHG1101 在 6 月 24 日以前）先不出：要等"没有数据"的提示做好（W3 待办）
 #   - 现有数据全是 final，出不了 interim 相关的题
 #   - 不要和 router_examples.yaml 用同一个节点 + 日期
+#   - 不要出指标字典里写着答案的例子：北岛 2026-04-08 的平均价（162.08，162 个节点）、
+#     南岛 2026-07-15 各节点日均价的范围（7.78 ~ 61.88）—— 字典进提示词，等于把答案给了模型
 
 - set: golden
   id: N001
@@ -45,9 +47,14 @@
 - set: golden
   id: N005
   week: 1
-  difficulty: easy
-  intent: out_of_scope
-  metrics: []
-  question: What was the average electricity price in the North Island last week?
-  assert_type: refuse
-  note: 节点的岛屿、区域都是 NULL，按岛屿汇总答不了；也不能拿全部节点的平均价顶替
+  difficulty: medium
+  intent: metric_query
+  metrics: [Period price]
+  question: What was the average spot price across South Island nodes on 15 August 2026?
+  sql: SELECT count(DISTINCT p.node_id) AS k, round(avg(p.price_nzd_per_mwh), 2) AS v FROM mart_current_price p JOIN v_dim_node n ON n.node_id = p.node_id WHERE n.island = 'SI' AND p.trading_date = DATE '2026-08-15'
+  notes_must_contain: [unweighted]
+  note: >-
+    字典 2026-11.1 起按岛平均价可以回答（cross_node_average）：节点价格的不加权简单平均，要给节点数（k）并写明 unweighted。
+    算法只有一种（2026-11.2）：范围内 mart_current_price 的行直接求平均，每个节点时段价格计一次；参考 SQL 就是这么写的。
+    这一天所有节点时段完整，区分不了"直接平均"和"先按节点平均再平均"；要验证算法得另出有节点时段不全的题（第 1 步）。
+    notes_must_contain 等第 0 步第 ⑤ 项（口径说明随结果返回）做完后才生效。原来这题是"按岛屿汇总 → 拒答"。
