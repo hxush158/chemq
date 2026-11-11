@@ -141,13 +141,16 @@ ChemQ 重建服务库、重算标准答案后零 diff（N001 不在那 43 行里
   - 跨节点平均的算法（字典 2026-11.2 定为一种）：范围内 `mart_current_price` 的行直接求平均，每个节点时段价格计一次；
     不对各节点日均价再平均，也不对多天的日均价再平均。回答要带三样：unweighted 的说明、节点数、日期范围。
     三样各取最可靠的来源：说明来自模型写的 `assumptions`（不许带数字），节点数来自 SQL 多返回的一列，日期范围来自代码里的查询计划（`time_range`，裁剪之后的）
+  - 第 0 步 ① 的完整范围（`run_eval`）：citation 误报；输出写领域和方言；按类型判分（`eval.tolerance: typed`）；`must_contain` 支持同义词组、比较前去掉千位分隔符、英文不区分大小写；holdout 可从外部文件读入（`make eval SET=holdout HOLDOUT=…`）
+  - holdout（11/11）：Hui 独立写完 20 题，标准答案由 nz-power 从原始文件独立计算、在 Snowflake 上抽查。文件只存在本机，最终测量时交付。类型：数值、no_data 1、refuse 4、explain、explain_value（对应 `sql_and_citation`，需要 ④ 覆盖 `mixed`）
+  - 口径送审：golden 写完后用 `make review-golden` 生成送审表，nz-power 只从口径角度审
   - 出题注意：字典里写着答案的例子不出（北岛 2026-04-08 = 162.08）；要验证算法，得出一道有节点时段不全、两种算法结果不同的题（比如 OHG1101 首日 6/24 所在的分区）
 
 **步骤**
 
 | 步 | 内容 | 谁做 | 时间 | 验收 |
 |---|---|---|---|---|
-| 0 | 清待办：① `run_eval` 的 citation 误报 + 输出写领域和方言；② 0 行时回答"没有数据"；③ 给用户看的文字按语言切换；④ 定义类问题用指标字典回答；⑤ 口径说明随结果返回（`assumptions` → `Answer.notes`，评测 `notes_must_contain`） | Hui；文案 Claude 起草 | 周一–周二 | 测试全过；chem 评测不退步 |
+| 0 | 清待办：① `run_eval` 的 citation 误报 + 输出写领域和方言；② 0 行时回答"没有数据"；③ 给用户看的文字按语言切换；④ 定义类问题用指标字典回答（`knowledge_lookup`），没有知识库时 `mixed` 的解释也用字典；⑤ 口径说明随结果返回（`assumptions` → `Answer.notes`，评测 `notes_must_contain`） | Hui；文案 Claude 起草 | 周一–周二 | 测试全过；chem 评测不退步 |
 | 1 | 出题：golden 40（Claude 起草，Hui review）+ holdout 20（Hui 写）；参考 SQL Claude 起草 | 见左 | 周二–周三 | `make golden` 成功；`make cross-check` 在 Snowflake 上全部 SAME |
 | 2 | golden 基线 → 分析失败 → 只用 golden 调规则（字典问题集中交给 nz-power） | Hui 跑和改，Claude 分析失败 | 周三–周五 | golden：exec ≥ 0.90，refuse = 1.0 |
 | 3 | 最终测量：holdout 只跑一次；golden 连跑 3 次取均值；全部题在 Snowflake 上跑一次；Agent 跑一次 | Hui | 周六 | 如实记录 |
