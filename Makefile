@@ -155,8 +155,8 @@ test-snowflake:  ## Snowflake 集成测试：真连 NZ_POWER（读 .env 里的�
 eval-dry:        ## 不调 API，只自检评测集
 	cd ai && uv run python evals/run_eval.py --week 6 --dry
 
-eval:            ## 跑评测  用法: make eval WEEK=1  （W4：ENGINE=agent 换做法，SET=holdout 跑新题）
-	cd ai && $(QUERY_ENV) uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --set $${SET:-golden} --json ../eval-report.json
+eval:            ## 跑评测  用法: make eval WEEK=1  （ENGINE=agent 换做法；SET=holdout 跑新题；HOLDOUT=/路径/文件.jsonl 用仓库外的题）
+	cd ai && $(QUERY_ENV) uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --set $${SET:-golden} $(if $(HOLDOUT),--file "$(abspath $(HOLDOUT))") --json ../eval-report.json
 
 eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Recall@K（需先 make ingest；默认 8 条，K=5 对比）
 	@mkdir -p runs

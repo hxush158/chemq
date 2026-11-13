@@ -19,16 +19,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai" / "src"))
 
+from chemq.config import settings  # noqa: E402
 from chemq.domain import domain  # noqa: E402  —— 要先改 sys.path 才能 import
 
 GOLDEN = domain().golden_path
@@ -76,7 +80,9 @@ class Report:
         异常是跑不起来 —— 数据库没开、key 失效、方言没实现。"""
         return [f for f in self.failures if "error" in f]
 
-    def unscored_due(self, week: int) -> list[str]:
+    def unscored_due(
+            self, week: int, case_counts: dict[str, int]
+    ) -> list[str]:
         """本周该计分、却一题都没计上的指标。
 
         这是最危险的一类「假绿」：全线连不上数据库时 exec_acc 是 nan，
@@ -85,7 +91,9 @@ class Report:
         return [
             kind
             for kind, attr in self.DUE_SCORES.items()
-            if week >= DUE_FROM[kind] and getattr(self, attr).total == 0
+            if week >= DUE_FROM[kind] 
+            and case_counts.get(kind, 0) > 0
+            and getattr(self, attr).total == 0
         ]
 
     def summary(self) -> dict:
@@ -105,7 +113,22 @@ class Report:
         }
 
 
-def num_close(a: str, b: str) -> bool:
+def num_close(a: str, b: str, typed: bool = False) -> bool:
+    """typed 按标准答案 b 的写法选容差；默认保留原来的相对误差规则。"""
+    if typed:
+        expected_text = str(b).strip()
+        try:
+            da, db = Decimal(str(a).strip()), Decimal(expected_text)
+        except InvalidOperation:
+            return str(a).strip() == expected_text
+        if not da.is_finite() or not db.is_finite():
+            return False
+        if "." not in expected_text:
+            return da == db
+        if len(expected_text.partition(".")[2]) <= 2:
+            return abs(da - db) <= Decimal("0.01")
+
+    # 未开启 typed，或标准答案有至少三位小数：沿用原来的规则。
     try:
         fa, fb = float(a), float(b)
     except (TypeError, ValueError):
@@ -115,7 +138,7 @@ def num_close(a: str, b: str) -> bool:
     return abs(fa - fb) / abs(fb) * 100 <= TOL_PCT
 
 
-def rows_match(actual: list[dict], expected: list[dict]) -> bool:
+def rows_match(actual: list[dict], expected: list[dict], typed: bool = False) -> bool:
     """结果集比对：无序、只看 (k, v)。刻意不比较列名 —— 列名叫什么不重要，数字对才重要。"""
     if len(actual) != len(expected):
         return False
@@ -126,7 +149,7 @@ def rows_match(actual: list[dict], expected: list[dict]) -> bool:
             ek = exp.get("k")
             ev = exp["v"]
             key_ok = ek is None or any(str(v).strip() == ek for v in vals)
-            val_ok = any(num_close(v, ev) for v in vals)
+            val_ok = any(num_close(v, ev, typed=typed) for v in vals)
             if key_ok and val_ok:
                 remaining.pop(i)
                 break
@@ -135,12 +158,114 @@ def rows_match(actual: list[dict], expected: list[dict]) -> bool:
     return not remaining
 
 
-def load_cases(week: int, path: Path = GOLDEN) -> list[dict]:
-    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+def load_cases(week: int, path: Path = GOLDEN, *, content: bytes | None = None) -> list[dict]:
+    text = (path.read_bytes() if content is None else content).decode("utf-8")
+    cases = [json.loads(line) for line in text.splitlines() if line]
     return [c for c in cases if c["week"] <= week]
 
+def validate_must_contain(value: object) -> None:
+    """外层是列表；每项是非空字符串，或非空的字符串同义词组。"""
+    if not isinstance(value, list):
+        raise ValueError("must_contain 必须是列表")
 
-def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipeline") -> str:
+    for index, item in enumerate(value, start=1):
+        if isinstance(item, str):
+            if not item.strip():
+                raise ValueError(f"must_contain 第 {index} 项不能是空字符串")
+        elif isinstance(item, list):
+            if not item:
+                raise ValueError(f"must_contain 第 {index} 项的同义词组不能为空")
+            if not all(isinstance(word, str) and word.strip() for word in item):
+                raise ValueError(
+                    f"must_contain 第 {index} 项的同义词组只能包含非空字符串"
+                )
+        else:
+            raise ValueError(
+                f"must_contain 第 {index} 项必须是字符串或同义词组"
+            )
+
+
+def validate_cases(
+    cases: list,
+    source: str | Path,
+    *,
+    line_numbers: list[int] | None = None,
+) -> None:
+    """校验整个文件；首个错误立即抛出，带文件、行号和题号。"""
+    required = ("id", "week", "intent", "question", "assert_type")
+    allowed_types = {
+        "sql", "refuse", "citation", "sql_and_citation", "no_data",
+    }
+    seen: dict[str, int] = {}
+
+    for index, case in enumerate(cases):
+        line_no = line_numbers[index] if line_numbers is not None else index + 1
+        case_id = case.get("id", "<缺失>") if isinstance(case, dict) else "<未知>"
+
+        def error(message: str) -> ValueError:
+            return ValueError(
+                f"{source}:{line_no} [题号 {case_id!r}] {message}"
+            )
+
+        if not isinstance(case, dict):
+            raise error("每行必须是一个 JSON 对象")
+
+        missing = [key for key in required if key not in case]
+        if missing:
+            raise error(f"缺少必填字段：{', '.join(missing)}")
+
+        for key in ("id", "intent", "question"):
+            if not isinstance(case[key], str) or not case[key].strip():
+                raise error(f"{key} 必须是非空字符串")
+
+        # bool 也是 int 的子类，因此这里用 type，拒绝 true / false。
+        if type(case["week"]) is not int or case["week"] < 1:
+            raise error("week 必须是正整数")
+
+        if case_id in seen:
+            raise error(f"id 重复，首次出现在第 {seen[case_id]} 行")
+        seen[case_id] = line_no
+
+        at = case["assert_type"]
+        if not isinstance(at, str) or at not in allowed_types:
+            raise error(f"不支持的 assert_type：{at!r}")
+
+        if at in ("sql", "sql_and_citation"):
+            expected = case.get("expected")
+            if not isinstance(expected, list):
+                raise error("expected 必须是列表")
+
+            for row_no, row in enumerate(expected, start=1):
+                if not isinstance(row, dict):
+                    raise error(f"expected 第 {row_no} 行必须是对象")
+                if "v" not in row:
+                    raise error(f"expected 第 {row_no} 行缺少 v")
+                for key, value in row.items():
+                    if not isinstance(value, str):
+                        raise error(
+                            f"expected 第 {row_no} 行的 {key!r} 必须是字符串"
+                        )
+
+        if at in ("citation", "sql_and_citation"):
+            if "must_contain" not in case:
+                raise error("引用题缺少 must_contain")
+
+            must_contain = case["must_contain"]
+
+            # 公共函数只负责格式检查。
+            try:
+                validate_must_contain(must_contain)
+            except ValueError as exc:
+                raise error(str(exc)) from exc
+
+            # 引用题额外要求外层列表非空。
+            if not must_contain:
+                raise error("引用题的 must_contain 不能为空")
+
+def evaluate(
+    case: dict, week: int, rep: Report, dry: bool, engine: str = "pipeline",
+    typed: bool = False,
+) -> str:
     """TODO(W1): 接上 router.plan()
        TODO(W2): 接上 text2sql.generate_and_run()
        TODO(W3): 接上 rag.hybrid_search() 并校验 citations
@@ -149,7 +274,7 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipel
     if dry:
         # 自检：标准答案能不能和自己比中？比不中说明 rows_match 或评测集有问题。
         exp = case.get("expected")
-        if exp is not None and not rows_match(exp, exp):
+        if exp is not None and not rows_match(exp, exp, typed=typed):
             rep.failures.append({"id": case["id"], "error": "评测集自比对失败"})
             return "x"
         return "\u2713"
@@ -184,7 +309,7 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipel
 
     if at in ("sql", "sql_and_citation"):
         if week >= DUE_FROM["sql"]:
-            r = rows_match(result.rows, case["expected"])
+            r = rows_match(result.rows, case["expected"], typed=typed)
             rep.execution.add(r)
             due_failed = due_failed or not r
         else:
@@ -195,9 +320,7 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipel
             text = (result.answer or "") + json.dumps(
                 [c.model_dump() for c in result.citations], ensure_ascii=False
             )
-            cited = bool(result.citations) and all(
-                kw in text for kw in case.get("must_contain", [])
-            )
+            cited = bool(result.citations) and contains_all(text, case.get("must_contain", []))
             rep.citation.add(cited)
             due_failed = due_failed or not cited
         else:
@@ -226,7 +349,30 @@ def evaluate(case: dict, week: int, rep: Report, dry: bool, engine: str = "pipel
     return "\u25e6" if waiting else "\u2713"    # ◦ = 有断言还没到期；✓ = 本周该过的都过了
 
 
+def _normalize(text: str) -> str:
+    ### 转小写：text.lower()；
+    lower_text = text.lower()
+    ### 去掉数字里的千位分隔符：re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)。
+    ###这样 79,291 会变成 79291；
+    ###但 1,2,3 这种列表不受影响，因为逗号后面不是正好 3 位数字。##
+    return re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", lower_text)
+
+
+def _hit(text: str, item: str | list[str]) -> bool:
+    if isinstance(item, str):
+        return _normalize(item) in text
+
+    return any(_normalize(word) in text for word in item)
+
+
+def contains_all(text: str, must_contain: list) -> bool:
+    validate_must_contain(must_contain)
+    norm = _normalize(text)
+    return all(_hit(norm, item) for item in must_contain)
+
 def main() -> int:
+    ## 开头打印：增加领域 ID 和当前 SQL 方言 #
+    print(f"领域ID: {domain().id} ,当前SQL方言: {settings().sql_dialect}")
     ap = argparse.ArgumentParser()
     ap.add_argument("--week", type=int, default=1)
     ap.add_argument("--json", type=Path)
@@ -238,6 +384,8 @@ def main() -> int:
     ap.add_argument("--label", help="这次运行的名字，写进报告，对比时用")
     ap.add_argument("--set", dest="case_set", choices=["golden", "holdout"], default="golden",
                     help="golden=主评测 20 题（默认）；holdout=W4 新题验证集，跑完不许再拿来调规则")
+    ap.add_argument("--file", type=Path, 
+                    help="从仓库外的文件读题（holdout 交付用），不读 golden/holdout.jsonl")
     ap.add_argument("--engine", choices=["pipeline", "agent"], default="pipeline",
                     help="pipeline=固定流程（默认）；agent=Agent SDK 分析员（W4）")
     args = ap.parse_args()
@@ -248,7 +396,20 @@ def main() -> int:
     if args.effort:
         os.environ["CHEMQ_EFFORT"] = args.effort
 
-    cases = load_cases(args.week, HOLDOUT if args.case_set == "holdout" else GOLDEN)
+    typed = (domain().config.get("eval") or {}).get("tolerance") == "typed"
+    case_path = args.file or (
+        HOLDOUT if args.case_set == "holdout" else GOLDEN
+    )
+    try:
+        case_path = case_path.resolve()
+        # 解析和哈希使用同一份字节，避免评测期间文件变化导致报告记错版本。
+        case_bytes = case_path.read_bytes()
+        cases_sha256 = hashlib.sha256(case_bytes).hexdigest()
+        cases = load_cases(args.week, case_path, content=case_bytes)
+    except (OSError, ValueError) as exc:
+        print(f"评测集校验失败：{exc}", file=sys.stderr)
+        return 2
+    
     if args.only:
         want = {x.strip().upper() for x in args.only.split(",")}
         cases = [c for c in cases if c["id"].upper() in want]
@@ -256,11 +417,26 @@ def main() -> int:
         if missing:
             print(f"⚠ 这些题号在 week<={args.week} 的范围里不存在：{sorted(missing)}")
     rep = Report()
-    print(f"评测集: {args.case_set} {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
+
+    case_counts = {"refuse": 0, "sql": 0, "citation": 0}
+    
+    for case in cases:
+        at = case.get("assert_type", "sql")
+
+        if at == "refuse":
+            case_counts["refuse"] +=1
+
+        if at in ("sql", "sql_and_citation"):
+            case_counts["sql"] +=1
+
+        if at in ("citation", "sql_and_citation"):
+            case_counts["citation"] +=1
+        print(f"领域ID: {domain().id} ,当前SQL方言: {settings().sql_dialect}")
+    print(f"领域ID: {domain().id}  当前SQL方言: {settings().sql_dialect} 评测集: {args.case_set} {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
 
     for c in cases:
         try:
-            mark = evaluate(c, args.week, rep, args.dry, args.engine) or "·"
+            mark = evaluate(c, args.week, rep, args.dry, args.engine, typed=typed) or "·"
         except ModuleNotFoundError:
             print("chemq.pipeline 还没实现 —— 这是 W1 的第一个任务。")
             print("先跑 `python ai/evals/run_eval.py --week 1 --dry` 确认评测集本身没问题。")
@@ -315,6 +491,7 @@ def main() -> int:
     if args.json:
         from datetime import datetime, timezone  # noqa: PLC0415
         label = args.label or os.environ.get("CHEMQ_MODEL_ROUTER", "default")
+        label += f"+{domain().id}"
         if args.effort:
             label += f"+{args.effort}"
         if args.engine != "pipeline":
@@ -330,7 +507,11 @@ def main() -> int:
                 "model_router": os.environ.get("CHEMQ_MODEL_ROUTER", "(用 .env 的值)"),
                 "effort": args.effort or os.environ.get("CHEMQ_EFFORT", "(默认)"),
                 "only": args.only,
+                "cases_file": str(case_path),
+                "cases_sha256": cases_sha256,
                 "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "domain": domain().display_name,
+                "dialect":settings().sql_dialect,
             },
             "summary": s,
             "cases": rep.cases,
@@ -351,7 +532,7 @@ def main() -> int:
     # 所以任何基于阈值的门禁都挡不住「全线异常」这种假绿 ——
     # 这个洞在本项目里真实出现过两次（API key 失效 17 题、数据库没开 11 题），
     # 两次 CI 都是绿的。
-    unscored = rep.unscored_due(args.week)
+    unscored = rep.unscored_due(args.week, case_counts)
     if unscored and not args.only:
         names = {"refuse": "refuse_acc", "sql": "exec_acc", "citation": "citation_acc"}
         print(
