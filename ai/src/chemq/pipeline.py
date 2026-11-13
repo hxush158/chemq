@@ -55,7 +55,8 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
     # 生成 SQL 的 Sonnet 调用一分钱都没算 —— 而那才是大头。
     cost = result.usage.cost_usd
     caveats: list[str] = []
-
+    notes: list[str] = []
+    
     sql, rows = None, []
     if query_plan.intent in ("metric_query", "mixed"):
         # Router 提取时间后，由代码检查覆盖范围，再决定是否生成 SQL。
@@ -92,6 +93,20 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
             )
         sql, rows = run.sql, run.rows
         cost += run.cost_usd
+
+        notes = list(run.candidate.assumptions)
+
+        if query_plan.time_range is not None:
+            notes.append(
+                string(
+                    "note_date_range",
+                    extra={
+                        "start": query_plan.time_range.start,
+                        "end": query_plan.time_range.end,
+                    }
+                )
+            )
+        
 
     has_kb = domain().has_kb
     if not has_kb and query_plan.intent == "knowledge_lookup":
@@ -132,6 +147,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
             refused=False,
             sql=sql,
             rows=rows,
+            notes=notes,
             citations=kb.citations if not kb.refused else [],
             numbers_from_sql=bool(rows),
             cost_usd=cost,
@@ -147,6 +163,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
         refused=False,
         sql=sql,
         rows=rows,
+        notes=notes,
         numbers_from_sql=bool(rows),
         cost_usd=cost,
         caveats=caveats,

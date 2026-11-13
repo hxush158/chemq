@@ -59,6 +59,7 @@ schema_reasoning: 一句话说明判断依据
 schema_sql: 只读 SQL。refuse_reason 非空时留空字符串。
 schema_refuse_reason: 只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所需时间段没有数据），此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。
 schema_metric_definitions_used: 引用了指标字典中的哪些口径条目
+schema_assumptions: 指标字典要求回答必须附带的说明，一条一句、不带数字；没有要求就留空
 schema_answer_intent: 路由判定的意图；evals 按它算 intent_acc
 schema_answer_refused: 是否拒答；evals 按它算 refuse_acc
 schema_answer_cost: 这一次问答累计的 API 成本
@@ -97,3 +98,4 @@ hook_tool_denied: '{{name}} 不在允许的工具列表里，只能用 {{tools}}
 kb_no_hit: 知识库里没有找到和这个问题相关的资料。
 kb_no_citation: 这次回答没有标出资料出处，可能不是依据知识库作答，已拦截。请换个问法或联系管理员补充资料。
 no_data: 查询成功，但在这个时间范围内没有符合条件的数据（结果为 0 行）。这不代表数值为 0。
+note_date_range: "日期范围：{{start}} 至 {{end}}"

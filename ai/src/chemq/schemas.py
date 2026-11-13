@@ -59,7 +59,7 @@ class SqlCandidate(BaseModel):
     metric_definitions_used: list[str] = Field(
         default_factory=list, description=string("schema_metric_definitions_used")
     )
-    assumptions: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list, description=string("schema_assumptions"))
 
 
 class GuardVerdict(BaseModel):
@@ -98,4 +98,5 @@ class Answer(BaseModel):
     rows: list[dict] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     caveats: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     needs_human_review: bool = False

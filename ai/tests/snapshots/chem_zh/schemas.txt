@@ -142,6 +142,7 @@
         "type": "array"
       },
       "assumptions": {
+        "description": "指标字典要求回答必须附带的说明，一条一句、不带数字；没有要求就留空",
         "items": {
           "type": "string"
         },

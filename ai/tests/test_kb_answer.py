@@ -161,7 +161,7 @@ def test_pipeline_mixed_passes_rows_and_keeps_numbers_when_kb_fails(monkeypatch)
     seen = {}
     monkeypatch.setattr(pipeline, "plan", lambda q: _plan("mixed"))
     monkeypatch.setattr(pipeline, "generate_and_run", lambda *a, **k: NS(
-        sql="select 1", rows=[{"v": 134.75}], cost_usd=0.03))
+        sql="select 1", rows=[{"v": 134.75}], cost_usd=0.03, candidate=NS(assumptions=[])))
 
     def fake_kb(q, sql_rows=None):
         seen["rows"] = sql_rows

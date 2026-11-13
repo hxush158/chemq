@@ -7,6 +7,7 @@ import pytest
 
 from chemq import pipeline
 from chemq.kb_answer import KbResult
+from chemq.prompts import string
 from chemq.schemas import QueryPlan, TimeRange
 from chemq.text2sql import Unanswerable
 
@@ -14,7 +15,7 @@ from chemq.text2sql import Unanswerable
 @pytest.fixture
 def stages(monkeypatch):
     router = Mock()
-    sql = Mock(return_value=NS(sql="test sql", rows=[{"v": 1}], cost_usd=0.02))
+    sql = Mock(return_value=NS(sql="test sql", rows=[{"v": 1}], cost_usd=0.02, candidate=NS(assumptions=[])))
     kb = Mock(return_value=KbResult(answer="解释", refused=False, cost_usd=0.03))
     coverage = Mock(return_value=(date(2025, 10, 1), date(2026, 9, 30)))
     for name, mock in [
@@ -64,6 +65,21 @@ def test_clipped_plan_and_warning_survive_success_paths(stages, intent, kb_refus
     else:
         stages.kb.assert_not_called()
         assert result.cost_usd == pytest.approx(0.021)
+
+
+@pytest.mark.parametrize("intent", ["metric_query", "mixed"])
+def test_notes_include_assumptions_and_clipped_date_range(stages, intent):
+    note = "An unweighted simple average of node prices."
+    stages.sql.return_value.candidate = NS(assumptions=[note])
+    set_plan(stages, "2025-09-01", "2025-11-30", intent=intent)
+
+    result = pipeline.answer("测试口径说明")
+
+    assert note in result.notes
+    assert string(
+        "note_date_range",
+        extra={"start": "2025-10-01", "end": "2025-11-30"},
+    ) in result.notes
 
 
 def test_clipping_warning_survives_text2sql_refusal(stages):

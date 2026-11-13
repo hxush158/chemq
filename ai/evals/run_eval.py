@@ -158,10 +158,33 @@ def rows_match(actual: list[dict], expected: list[dict], typed: bool = False) ->
     return not remaining
 
 
-def load_cases(week: int, path: Path = GOLDEN, *, content: bytes | None = None) -> list[dict]:
+def load_cases(
+    week: int,
+    path: Path = GOLDEN,
+    *,
+    content: bytes | None = None,
+) -> list[dict]:
     text = (path.read_bytes() if content is None else content).decode("utf-8")
-    cases = [json.loads(line) for line in text.splitlines() if line]
-    return [c for c in cases if c["week"] <= week]
+    cases = []
+    line_numbers = []
+
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+
+        try:
+            case = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{path}:{line_no} [题号 <无法解析>] "
+                f"JSON 格式错误：{exc.msg}"
+            ) from exc
+
+        cases.append(case)
+        line_numbers.append(line_no)
+
+    validate_cases(cases, path, line_numbers=line_numbers)
+    return [case for case in cases if case["week"] <= week]
 
 def validate_must_contain(value: object) -> None:
     """外层是列表；每项是非空字符串，或非空的字符串同义词组。"""
@@ -262,6 +285,15 @@ def validate_cases(
             if not must_contain:
                 raise error("引用题的 must_contain 不能为空")
 
+            if "notes_must_contain" in case:
+                try:
+                    validate_must_contain(case["notes_must_contain"])
+                except ValueError as exc:
+                    raise error(
+                        f"notes_must_contain 格式错误：{exc}"
+                    ) from exc
+                
+
 def evaluate(
     case: dict, week: int, rep: Report, dry: bool, engine: str = "pipeline",
     typed: bool = False,
@@ -299,6 +331,9 @@ def evaluate(
     due_failed = False
     waiting: list[str] = []
 
+    rows_ok: bool | None = None
+    notes_ok: bool | None = None
+
     if at == "refuse":
         if week >= DUE_FROM["refuse"]:
             r = bool(getattr(result, "refused", False))
@@ -309,7 +344,22 @@ def evaluate(
 
     if at in ("sql", "sql_and_citation"):
         if week >= DUE_FROM["sql"]:
-            r = rows_match(result.rows, case["expected"], typed=typed)
+            rows_ok = rows_match(
+                result.rows, case["expected"], typed=typed
+            )
+
+            if "notes_must_contain" in case:
+                notes_text = (
+                    " ".join(getattr(result, "notes", []))
+                    + " "
+                    + (getattr(result, "answer", "") or "")
+                )
+                notes_ok = contains_all(
+                    notes_text, case["notes_must_contain"]
+                )
+
+            # 结果行必须正确；有说明要求时，说明也必须通过。
+            r = rows_ok and (notes_ok is not False)
             rep.execution.add(r)
             due_failed = due_failed or not r
         else:
@@ -335,6 +385,8 @@ def evaluate(
         "intent_ok": intent_ok,
         "assert_ok": ok,
         "assert_type": at,
+        "rows_ok": rows_ok,
+        "notes_ok": notes_ok,
         "cost_usd": round(getattr(result, "cost_usd", 0.0), 6),
         "latency_ms": rep.latencies[-1] if rep.latencies else 0,
     }
@@ -344,6 +396,8 @@ def evaluate(
             "id": case["id"], "question": case["question"],
             "expected_intent": case["intent"], "got_intent": getattr(result, "intent", None),
             "sql": getattr(result, "sql", None),
+            "rows_ok": rows_ok,
+            "notes_ok": notes_ok,
         })
         return "x"
     return "\u25e6" if waiting else "\u2713"    # ◦ = 有断言还没到期；✓ = 本周该过的都过了

@@ -31,4 +31,6 @@ Output contract (the result must be readable by people and comparable by program
 16. If the question also asks "why / what caused / is it because", the reason is answered by the knowledge base, not by SQL:
     SQL answers only the "how much" part; do not add detail rows or groupings (such as {{breakdown_example}}) to explain the reason.
     But a comparison period **named in the question** is part of "how much": for "why was X higher than Y", return both X and Y (same as rules 4 and 12).
-
+17. If the metric dictionary says an answer must carry a statement (for example how a number is computed), write that statement in assumptions:
+    one short sentence each, plain words, no numbers. Any number the statement needs, such as a count of nodes, must be returned
+    by the SQL as its own column. Leave assumptions empty when the dictionary requires no such statement.
