@@ -45,8 +45,7 @@ metric_dictionary_title: '# 指标口径字典'
 marker_cannot_answer: '【无法回答】'
 marker_not_covered: '【资料未覆盖】'
 mcp_instructions_no_kb: '{{data_name}}的只读查询工具。写 SQL 之前先调 list_metrics 看指标口径和语义层目录；数字只能来自 run_semantic_query 的结果。本领域没有知识库，无法提供有资料依据的原因解释。'
-kb_unavailable: 本领域没有知识库，无法回答需要查阅资料的问题。
-kb_explanation_unavailable: 本领域没有知识库，无法提供有资料依据的原因解释。
+dict_title: 指标口径字典
 schema_query_plan: 把用户问题解析成结构化查询计划，不含 SQL。
 schema_sql_candidate: SQL 候选或明确的拒答原因。
 schema_time_start: ISO 日期 YYYY-MM-DD
@@ -62,6 +61,7 @@ schema_metric_definitions_used: 引用了指标字典中的哪些口径条目
 schema_assumptions: 指标字典要求回答必须附带的说明，一条一句、不带数字；没有要求就留空
 schema_answer_intent: 路由判定的意图；evals 按它算 intent_acc
 schema_answer_refused: 是否拒答；evals 按它算 refuse_acc
+schema_answer_no_data: 查询成功但结果为 0 行；这是正常回答，不是拒答
 schema_answer_cost: 这一次问答累计的 API 成本
 schema_answer_numbers_from_sql: True 表示所有数字来自 SQL 执行结果，模型未参与算数
 

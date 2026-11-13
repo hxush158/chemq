@@ -168,7 +168,7 @@ def test_pipeline_time_refusal_never_calls_text2sql(monkeypatch, intent, start, 
         pipeline, "load_coverage", lambda: (date(2025, 10, 1), date(2026, 9, 30)),
     )
     monkeypatch.setattr(pipeline, "generate_and_run", forbidden_text2sql)
-    monkeypatch.setattr(pipeline, "answer_from_kb", forbidden_kb)
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", forbidden_kb)
 
     result = pipeline.answer("测试时间覆盖拒答")
 

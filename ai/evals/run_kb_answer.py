@@ -66,15 +66,15 @@ class CachedEmbedder:
 
 
 def grade(g: dict[str, Any], kb: Any) -> Row:
-    by_chunk = {h.chunk_id: h for h in kb.hits}
+    by_chunk = {(h.doc_id, h.chunk_id): h for h in kb.hits}   # 字典段落和知识库 chunk 会重号
     cited = []
     cite_ok = None
     for c in kb.citations:
-        h = by_chunk.get(c.chunk_id)
+        h = by_chunk.get((c.doc_id, c.chunk_id))
         cited.append(f"{c.doc_id} {rr.heading_of(h.content) if h else '?'}")
     if g["kind"] not in rr.NO_ANSWER:
         cite_ok = (not kb.refused) and any(
-            (h := by_chunk.get(c.chunk_id)) is not None
+            (h := by_chunk.get((c.doc_id, c.chunk_id))) is not None
             and any(rr.matches(h.doc_id, h.content, rel) for rel in g["relevant"])
             for c in kb.citations
         )

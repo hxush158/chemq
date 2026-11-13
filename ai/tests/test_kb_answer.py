@@ -44,10 +44,19 @@ def text(t, *idx, cited="原文"):
     return NS(type="text", text=t, citations=cites or None)
 
 
-def run(content, hits=HITS, question="利润怎么算？", llm=None, **kw):
+def run(content, hits=HITS, question="利润怎么算？", llm=None, dictionary=(), **kw):
+    """默认只开知识库、不带字典，老测试的下标和断言不变；字典相关的测试单独传。"""
     llm = llm or FakeLlm(content)
-    return ka.answer_from_kb(question, embedder=FakeEmbedder(), llm=llm,
-                             search=lambda q, emb: list(hits), **kw), llm
+    return ka.answer_from_knowledge(question, embedder=FakeEmbedder(), llm=llm,
+                                    search=lambda q, emb: list(hits), use_kb=True,
+                                    dictionary=list(dictionary), **kw), llm
+
+
+DICT_HIT = Hit(chunk_id=7, doc_id=ka.DICT_DOC_ID, title="指标口径字典",
+               content="指标口径字典 › metrics › 利润\nname: 利润\n\ndefinition: 暂无数据源",
+               rrf=0.0, cos_sim=None, vec_rank=None, bm_rank=None)
+LOW = [Hit(chunk_id=1, doc_id="D", title="t", content="《t》 › a\n毫不相干",
+           rrf=0.01, cos_sim=0.1, vec_rank=1, bm_rank=None)]
 
 
 # ---------- 组装请求 ----------
@@ -88,10 +97,63 @@ def test_parse_answer_ignores_out_of_range_index():
 # ---------- 三个出口 ----------
 
 def test_no_hit_returns_without_calling_claude():
-    low = [Hit(chunk_id=1, doc_id="D", title="t", content="《t》 › a\n毫不相干",
-               rrf=0.01, cos_sim=0.1, vec_rank=1, bm_rank=None)]
-    r, _ = run(None, hits=low, question="帮我写一封辞职信", llm=NoLlm())
+    """两个来源都没有资料（知识库判无命中、字典为空）才零成本拒答。"""
+    r, _ = run(None, hits=LOW, question="帮我写一封辞职信", llm=NoLlm())
     assert r.refused and r.kind == "no_hit" and r.cost_usd == 0
+
+
+# ---------- 两个资料来源（W3 第 0 步 ④） ----------
+
+def test_kb_miss_still_sends_dictionary_but_not_kb_chunks():
+    """问题 3 选 B 的代价：知识库没命中，字典还在，所以要调一次 Claude，由它判未覆盖。"""
+    r, llm = run([text("【资料未覆盖】字典里没有辞职信。")], hits=LOW,
+                 question="帮我写一封辞职信", dictionary=[DICT_HIT])
+    assert r.refused and r.kind == "not_covered" and r.cost_usd == 0.01
+    sent = [b for b in llm.calls[0]["user"] if b["type"] == "search_result"]
+    assert [b["source"] for b in sent] == [f"kb://{ka.DICT_DOC_ID}#7"]   # 无关的知识库 chunk 没送
+
+
+def test_kb_hits_come_first_then_dictionary():
+    r, llm = run([text("利润暂不支持。", 2)], dictionary=[DICT_HIT])
+    sent = [b["source"] for b in llm.calls[0]["user"] if b["type"] == "search_result"]
+    assert sent == ["kb://KB-MET-2026#11", "kb://KB-ENE-2026#7", f"kb://{ka.DICT_DOC_ID}#7"]
+    assert not r.refused and r.citations[0].doc_id == ka.DICT_DOC_ID
+
+
+def test_same_chunk_id_from_two_sources_are_two_citations():
+    """KB-ENE-2026#7 和 METRIC-DICT#7 同号，不能被去重成一条。"""
+    _, cites = ka.parse_answer([text("x", 1, 2)], HITS + [DICT_HIT])
+    assert [(c.doc_id, c.chunk_id) for c in cites] == [("KB-ENE-2026", 7), (ka.DICT_DOC_ID, 7)]
+
+
+def test_no_kb_domain_never_searches():
+    def no_search(*a):
+        raise AssertionError("没有知识库的领域不该检索")
+    llm = FakeLlm([text("Price is in NZD/MWh.", 0)])
+    r = ka.answer_from_knowledge("unit?", llm=llm, search=no_search, use_kb=False,
+                                 dictionary=[DICT_HIT])
+    assert not r.refused and r.citations[0].doc_id == ka.DICT_DOC_ID
+
+
+@pytest.mark.parametrize("domain_id, must_have", [
+    ("chem", ["metrics › 产量", "metrics › 单位产品综合能耗"]),
+    ("nz_power", ["conventions › trading_period", "views › "]),
+])
+def test_dictionary_passages_cover_both_dictionary_shapes(monkeypatch, domain_id, must_have):
+    from chemq.domain import load_domain
+    d = load_domain(domain_id)
+    monkeypatch.setattr(ka, "domain", lambda: d)
+    passages = ka.dictionary_passages()
+    assert [p.chunk_id for p in passages] == list(range(1, len(passages) + 1))
+    assert {p.doc_id for p in passages} == {ka.DICT_DOC_ID}
+    heads = [p.content.partition("\n")[0] for p in passages]
+    for m in must_have:
+        assert any(m in h for h in heads), m
+    import yaml
+    names = [m["name"] for m in yaml.safe_load(d.metric_dictionary_path.read_text(encoding="utf-8"))["metrics"]]
+    assert all(any(f"metrics › {n}" in h for h in heads) for n in names)   # 每个指标都有一段
+    blocks = ka.to_search_results(passages)
+    assert all(c["text"].strip() for b in blocks for c in b["content"])   # 空 text 块 API 会拒
 
 
 def test_not_covered_marker_means_refused():
@@ -141,7 +203,7 @@ def _plan(intent):
 
 def test_pipeline_knowledge_lookup_uses_kb(monkeypatch):
     monkeypatch.setattr(pipeline, "plan", lambda q: _plan("knowledge_lookup"))
-    monkeypatch.setattr(pipeline, "answer_from_kb", lambda q, sql_rows=None: ka.KbResult(
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", lambda q, sql_rows=None: ka.KbResult(
         answer="利润暂不支持。", refused=False,
         citations=[ka.Citation(doc_id="D", title="t", chunk_id=1, snippet="s")], cost_usd=0.02))
     a = pipeline.answer("利润怎么算？")
@@ -151,7 +213,7 @@ def test_pipeline_knowledge_lookup_uses_kb(monkeypatch):
 
 def test_pipeline_knowledge_refusal_propagates(monkeypatch):
     monkeypatch.setattr(pipeline, "plan", lambda q: _plan("knowledge_lookup"))
-    monkeypatch.setattr(pipeline, "answer_from_kb", lambda q, sql_rows=None: ka.KbResult(
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", lambda q, sql_rows=None: ka.KbResult(
         answer="没找到", refused=True, kind="no_hit"))
     a = pipeline.answer("帮我写辞职信")
     assert a.refused and "no_hit" in a.caveats[0]
@@ -167,7 +229,7 @@ def test_pipeline_mixed_passes_rows_and_keeps_numbers_when_kb_fails(monkeypatch)
         seen["rows"] = sql_rows
         return ka.KbResult(answer="资料只有…", refused=True, kind="not_covered", cost_usd=0.01)
 
-    monkeypatch.setattr(pipeline, "answer_from_kb", fake_kb)
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", fake_kb)
     a = pipeline.answer("3月单耗多少，为什么高？")
     assert seen["rows"] == [{"v": 134.75}]                    # SQL 结果交给了 Claude
     assert not a.refused and a.rows == [{"v": 134.75}]         # 数字还在，不算整体拒答

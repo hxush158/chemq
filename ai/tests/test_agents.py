@@ -127,3 +127,10 @@ def test_output_contract_lives_in_the_tool_description():
 
 def test_external_limits_are_set():
     assert agents.MAX_TURNS <= 10 and agents.MAX_BUDGET_USD <= 0.10
+
+
+def test_empty_last_query_marks_no_data():
+    a = to_answer("这段时间没有数据。", _rec([]), cost=0, stop="success")
+    assert a.no_data and not a.refused and a.rows == []
+    assert not to_answer("1", _rec([{"v": 1}]), cost=0, stop="success").no_data
+    assert not to_answer(f"{CANNOT_ANSWER}不行", _rec([]), cost=0, stop="success").no_data

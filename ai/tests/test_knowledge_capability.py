@@ -109,33 +109,11 @@ def _pipeline_stubs(monkeypatch, domain_id, intent):
     return sql
 
 
-@pytest.mark.parametrize("intent", ["knowledge_lookup", "mixed"])
-def test_nz_pipeline_never_calls_kb(monkeypatch, intent):
-    sql = _pipeline_stubs(monkeypatch, "nz_power", intent)
-    kb = Mock(side_effect=AssertionError("NZ 不应调用知识库"))
-    monkeypatch.setattr(pipeline, "answer_from_kb", kb)
-    answer = pipeline.answer("why?")
-    kb.assert_not_called()
-    assert answer.intent == intent
-    assert not answer.citations
-    if intent == "knowledge_lookup":
-        sql.assert_not_called()
-        assert answer.refused and not answer.numbers_from_sql
-        assert answer.answer == prompts.string("kb_unavailable")
-        assert answer.cost_usd == pytest.approx(0.01)
-    else:
-        sql.assert_called_once()
-        assert not answer.refused and answer.numbers_from_sql
-        assert answer.sql == "test SQL" and answer.rows == [{"v": 12.5}]
-        assert answer.cost_usd == pytest.approx(0.03)
-        assert answer.caveats == [prompts.string("kb_explanation_unavailable")]
-
-
 def test_nz_mixed_preserves_sql_refusal(monkeypatch):
     sql = _pipeline_stubs(monkeypatch, "nz_power", "mixed")
     sql.side_effect = Unanswerable("unavailable metric", kind="model_refused", cost_usd=0.02)
-    kb = Mock(side_effect=AssertionError("NZ 不应调用知识库"))
-    monkeypatch.setattr(pipeline, "answer_from_kb", kb)
+    kb = Mock(side_effect=AssertionError("SQL / 时间已拒答，不应再查资料"))
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", kb)
     answer = pipeline.answer("why?")
     assert answer.refused and answer.answer == "unavailable metric"
     assert answer.cost_usd == pytest.approx(0.03)
@@ -145,8 +123,8 @@ def test_nz_mixed_preserves_sql_refusal(monkeypatch):
 def test_nz_mixed_preserves_time_refusal(monkeypatch):
     sql = _pipeline_stubs(monkeypatch, "nz_power", "mixed")
     monkeypatch.setattr(pipeline, "check_time", lambda *a: NS(action="refuse", reason="outside coverage"))
-    kb = Mock(side_effect=AssertionError("NZ 不应调用知识库"))
-    monkeypatch.setattr(pipeline, "answer_from_kb", kb)
+    kb = Mock(side_effect=AssertionError("SQL / 时间已拒答，不应再查资料"))
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", kb)
     answer = pipeline.answer("why?")
     assert answer.refused and answer.answer == "outside coverage"
     assert answer.cost_usd == pytest.approx(0.01)
@@ -154,12 +132,15 @@ def test_nz_mixed_preserves_time_refusal(monkeypatch):
     kb.assert_not_called()
 
 
+@pytest.mark.parametrize("domain_id", ["chem", "nz_power"])
 @pytest.mark.parametrize("intent", ["knowledge_lookup", "mixed"])
-def test_chem_pipeline_still_calls_kb(monkeypatch, intent):
-    _pipeline_stubs(monkeypatch, "chem", intent)
+def test_pipeline_uses_knowledge_sources_in_every_domain(monkeypatch, domain_id, intent):
+    """W3 第 0 步 ④：没有知识库的领域也走资料来源（只有指标字典），不再直接拒答。"""
+    sql = _pipeline_stubs(monkeypatch, domain_id, intent)
     kb = Mock(return_value=NS(answer="grounded answer", cost_usd=0.04, refused=False, citations=[]))
-    monkeypatch.setattr(pipeline, "answer_from_kb", kb)
+    monkeypatch.setattr(pipeline, "answer_from_knowledge", kb)
     answer = pipeline.answer("why?")
     kb.assert_called_once_with("why?", sql_rows=[{"v": 12.5}] if intent == "mixed" else None)
     assert not answer.refused and answer.answer == "grounded answer"
     assert answer.cost_usd == pytest.approx(0.07 if intent == "mixed" else 0.05)
+    assert sql.call_count == (1 if intent == "mixed" else 0)

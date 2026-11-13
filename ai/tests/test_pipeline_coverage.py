@@ -20,7 +20,7 @@ def stages(monkeypatch):
     coverage = Mock(return_value=(date(2025, 10, 1), date(2026, 9, 30)))
     for name, mock in [
         ("plan", router), ("generate_and_run", sql),
-        ("answer_from_kb", kb), ("load_coverage", coverage),
+        ("answer_from_knowledge", kb), ("load_coverage", coverage),
     ]:
         monkeypatch.setattr(pipeline, name, mock)
     return NS(router=router, sql=sql, kb=kb, coverage=coverage)
@@ -114,3 +114,25 @@ def test_non_numeric_intents_do_not_load_coverage(stages, intent):
     else:
         stages.kb.assert_not_called()
         assert result.refused
+
+
+@pytest.mark.parametrize("intent", ["metric_query", "mixed"])
+def test_zero_rows_is_no_data_not_refusal(stages, intent):
+    set_plan(stages, "2026-01-01", "2026-01-31", intent=intent)
+    stages.sql.return_value = NS(
+        sql="test sql", rows=[], cost_usd=0.02, candidate=NS(assumptions=["口径"]),
+    )
+    result = pipeline.answer("没有数据的月份", scope="test-scope")
+    assert not result.refused and result.no_data
+    assert result.intent == intent
+    assert result.answer == string("no_data")
+    assert result.rows == [] and result.sql == "test sql"
+    assert result.notes[0] == "口径"            # 口径说明照样返回
+    assert result.cost_usd == pytest.approx(0.021)
+    stages.kb.assert_not_called()                # 没有数字可解释，不调知识库
+
+
+def test_rows_present_is_not_no_data(stages):
+    set_plan(stages, "2026-01-01", "2026-01-31")
+    result = pipeline.answer("有数据的月份", scope="test-scope")
+    assert not result.no_data and result.rows == [{"v": 1}]

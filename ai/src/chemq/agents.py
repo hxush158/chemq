@@ -145,7 +145,7 @@ def make_hooks(rec: Recorder) -> dict[str, Any]:
             return {"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": f"{name} 不在允许的工具列表里，只能用 {', '.join(TOOL_NAMES)}",
+                "permissionDecisionReason": string("hook_tool_denied", extra={"name": name, "tools": string("list_sep").join(TOOL_NAMES)}),
             }}
         return {}
 
@@ -178,7 +178,7 @@ def to_answer(text: str, rec: Recorder, *, cost: float, stop: str, question: str
     last = rec.last_ok_sql
     caveats: list[str] = []
     if stop and stop != "success":
-        caveats.append(f"Agent 没有正常结束：{stop}")
+        caveats.append(string("caveat_agent_stopped", extra={"stop": stop}))
 
     intent = infer_intent(rec, refused)
     cites = [] if refused else rec.citations(shown)
@@ -187,9 +187,9 @@ def to_answer(text: str, rec: Recorder, *, cost: float, stop: str, question: str
     if not refused and rec.kb_hits and not cites:
         if intent == "knowledge_lookup":
             refused, shown = True, NO_CITATION_TEXT
-            caveats.append("回答没有标出资料编号，已拦截（no_citation）")
+            caveats.append(string("caveat_no_citation_blocked"))
         elif intent == "mixed":
-            caveats.append("原因解释部分没有标出资料编号，未经引用核实")
+            caveats.append(string("caveat_explanation_uncited"))
 
     verdict = critic.check(
         shown, rec.all_rows(),
@@ -197,13 +197,16 @@ def to_answer(text: str, rec: Recorder, *, cost: float, stop: str, question: str
         question=question,                          # 用户自己说的数字也算依据
     ) if not refused else critic.Verdict(ok=True)
     if not verdict.ok:
-        caveats.append("这些数字在查询结果和引用原文里都找不到：" + "、".join(verdict.unverified))
+        caveats.append(string("caveat_unverified_numbers", extra={"numbers": string("list_sep").join(verdict.unverified)}))
 
     return Answer(
         trace_id=str(uuid.uuid4()),
         answer=shown,
         intent=intent,                              # type: ignore[arg-type]
         refused=refused or (stop != "success"),
+        # 和固定流程同一口径：最后一次成功查询为 0 行、且没拒答 → 正常的"没有数据"。
+        # 这里只设标记；回答文字由 Agent 自己写，靠提示词约束。
+        no_data=(not refused and stop == "success" and last is not None and not last["rows"]),
         cost_usd=cost,
         sql=None if refused or last is None else last["sql"],
         rows=[] if refused or last is None else last["rows"],

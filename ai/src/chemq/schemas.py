@@ -90,6 +90,7 @@ class Answer(BaseModel):
         default=None, description=string("schema_answer_intent")
     )
     refused: bool = Field(default=False, description=string("schema_answer_refused"))
+    no_data: bool = Field(default=False, description=string("schema_answer_no_data"))
     cost_usd: float = Field(default=0.0, description=string("schema_answer_cost"))
     numbers_from_sql: bool = Field(
         default=True, description=string("schema_answer_numbers_from_sql")

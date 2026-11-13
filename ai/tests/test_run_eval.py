@@ -150,3 +150,76 @@ def test_report_records_loaded_file_version(monkeypatch, tmp_path, source):
     config = json.loads(report_path.read_text(encoding="utf-8"))["config"]
     assert config["cases_file"] == str(selected.resolve())
     assert config["cases_sha256"] == hashlib.sha256(original).hexdigest()
+
+
+@pytest.mark.parametrize("result_kw, hits", [
+    ({"rows": [], "no_data": True, "refused": False}, 1),
+    ({"rows": [], "no_data": False, "refused": True}, 0),     # 把"没数据"当拒答：错
+    ({"rows": [{"v": 0}], "no_data": False, "refused": False}, 0),  # 查出了数（比如 0）：错
+])
+def test_no_data_case_scores_execution(monkeypatch, result_kw, hits):
+    from chemq import pipeline
+
+    result = SimpleNamespace(intent="metric_query", cost_usd=0, **result_kw)
+    monkeypatch.setattr(pipeline, "answer", lambda *args, **kwargs: result)
+    case = {
+        "id": "ND", "question": "test", "intent": "metric_query",
+        "assert_type": "no_data",
+    }
+    rep = Report()
+
+    run_eval.evaluate(case, 6, rep, dry=False)
+
+    assert rep.execution.total == 1
+    assert rep.execution.hits == hits
+    assert rep.refusal.total == 0
+
+
+def test_no_data_case_rejects_expected_rows():
+    case = {
+        "id": "ND", "week": 6, "intent": "metric_query", "question": "q",
+        "assert_type": "no_data", "expected": [{"v": "1"}],
+    }
+    with pytest.raises(ValueError, match="no_data"):
+        run_eval.validate_cases([case], "test.jsonl")
+
+
+def test_sql_case_notes_must_contain_is_validated():
+    case = {
+        "id": "S", "week": 6, "intent": "metric_query", "question": "q",
+        "assert_type": "sql", "expected": [{"v": "1"}],
+        "notes_must_contain": "unweighted",          # 应为列表
+    }
+    with pytest.raises(ValueError, match="notes_must_contain"):
+        run_eval.validate_cases([case], "test.jsonl")
+
+
+CITE_NO_KEYWORDS = {
+    "id": "C", "week": 1, "intent": "mixed", "question": "q",
+    "assert_type": "sql_and_citation", "expected": [{"v": "1"}],
+}
+
+
+def test_repo_golden_citation_case_may_omit_must_contain(tmp_path):
+    """chem Q009 / Q020 这类老题：没写 must_contain = 有引用即可。"""
+    path = tmp_path / "golden.jsonl"
+    path.write_text(json.dumps(CITE_NO_KEYWORDS), encoding="utf-8")
+    assert run_eval.load_cases(6, path)[0]["id"] == "C"
+
+
+@pytest.mark.parametrize("extra", [{}, {"must_contain": []}])
+def test_external_file_citation_case_requires_keywords(tmp_path, extra):
+    path = tmp_path / "holdout.jsonl"
+    path.write_text(json.dumps({**CITE_NO_KEYWORDS, **extra}), encoding="utf-8")
+    with pytest.raises(ValueError, match="must_contain"):
+        run_eval.load_cases(6, path, strict_citation=True)
+
+
+def test_repo_golden_files_pass_validation():
+    """仓库里的评测集都要能加载 —— 这条测试缺了，11/14 chem 评测才在跑的时候才炸。"""
+    from chemq.domain import available, load_domain
+    for domain_id in available():
+        d = load_domain(domain_id)
+        for path in (d.golden_path, d.holdout_path):
+            if path.exists():
+                run_eval.load_cases(99, path)

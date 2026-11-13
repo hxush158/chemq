@@ -18,7 +18,9 @@ from unittest.mock import patch
 
 from chemq import agents, critic, kb_answer, pipeline, router, text2sql, tools
 from chemq.domain import domain
-from chemq.schemas import QueryPlan, SqlCandidate
+from chemq.schemas import QueryPlan, SqlCandidate, TimeRange
+from chemq.coverage import check_time
+from datetime import date
 
 d = domain()
 question = "raw {question} {{as_of}}"
@@ -66,6 +68,12 @@ print(json.dumps({
     "numbers": [critic.numbers_in_text(t) for t in claims],
     "scale_ok": critic.check(scaled, [{"value": scale_value}]).ok,
     "bad_scale_ok": critic.check(scaled, [{"value": scale_value / 10}]).ok,
+    # 给用户看的时间拒答 / 裁剪理由（W3 第 0 步 ③）
+    "time_refused": check_time(QueryPlan(intent="metric_query", needs_knowledge=False, reasoning="x",
+        time_range=TimeRange(start="2025-01-01", end="2025-01-31")), (date(2026, 4, 1), date(2026, 9, 30))).reason,
+    "time_clipped": check_time(QueryPlan(intent="metric_query", needs_knowledge=False, reasoning="x",
+        time_range=TimeRange(start="2026-03-01", end="2026-04-30")), (date(2026, 4, 1), date(2026, 9, 30))).reason,
+    "kb_texts": [kb_answer.NO_HIT_TEXT, kb_answer.NO_CITATION_TEXT],
 }))
 '''
     result = subprocess.run(
@@ -97,7 +105,7 @@ def test_model_messages_and_schemas_follow_domain(runtime):
     slot = load_domain("nz_power" if english else "chem").config["prompt_slots"]["dimension_examples"]
     assert dimensions == (f"For example: {slot}" if english else f"如 {slot}")
     if english:
-        for text in [r["sql_user"], r["kb_user"], r["schemas"]]:
+        for text in [r["sql_user"], r["kb_user"], r["schemas"], r["time_refused"], r["time_clipped"], r["kb_texts"]]:
             assert not re.search(r"[\u4e00-\u9fff]", json.dumps(text, ensure_ascii=False))
 
 
@@ -114,3 +122,14 @@ def test_critic_uses_current_locale(runtime):
                 else [["134.75"], ["3"], ["5"], ["7.18", "7.44"], [], ["3"]])
     assert r["numbers"] == expected
     assert r["scale_ok"] and not r["bad_scale_ok"]
+
+
+def test_user_facing_time_text_follows_locale(runtime):
+    """时间拒答、裁剪理由按语言取；中文和搬家之前一字不差（chem 输出不变）。"""
+    r = runtime
+    if r["locale"] == "zh":
+        assert r["time_refused"] == "本期与数据覆盖范围 2026-04-01 至 2026-09-30 没有交集"
+        assert r["time_clipped"] == "本期从 2026-03-01 至 2026-04-30 裁剪为 2026-04-01 至 2026-04-30，仅查询数据覆盖内的部分"
+    else:
+        assert "2026-04-01 to 2026-09-30" in r["time_refused"]
+        assert "trimmed to 2026-04-01 to 2026-04-30" in r["time_clipped"]

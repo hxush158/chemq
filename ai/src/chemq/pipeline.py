@@ -3,7 +3,7 @@
 W1 只要能返回 intent 就算过；之后每周往里加一层：
     W1  router.plan()                    -> intent
     W2  text2sql.generate_and_run()      -> sql / rows
-    W3  kb_answer.answer_from_kb()       -> answer + citations（✅）
+    W3  kb_answer.answer_from_knowledge() -> answer + citations（✅；NZ W3 起知识库 + 指标字典）
     W4  agents.orchestrate()             -> 替换掉这里的手写流程
     W6  audit.write()                    -> 全链路留痕
 
@@ -17,7 +17,7 @@ import uuid
 
 from .coverage import check_time, load_coverage
 from .domain import domain
-from .kb_answer import answer_from_kb
+from .kb_answer import answer_from_knowledge
 from .prompts import string
 from .router import plan  # 需要引入写好的 plan 函数
 from .schemas import Answer
@@ -64,14 +64,14 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
         if verdict.action == "refuse":
             return Answer(
                 trace_id=trace_id,
-                answer=verdict.reason or "查询时间不可用",
+                answer=verdict.reason or string("time_unavailable"),
                 intent="out_of_scope",
                 refused=True,
                 cost_usd=cost,
-                caveats=["时间超出覆盖（代码判定）"],
+                caveats=[string("caveat_time_refused")],
             )
         if verdict.action == "clip":
-            caveats.append(f"时间范围已裁剪（代码判定）：{verdict.reason}")
+            caveats.append(string("caveat_time_clipped", extra={"reason": verdict.reason}))
         query_plan = verdict.plan
 
         try:
@@ -89,7 +89,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
                 refused=True,
                 sql=e.sql or None,
                 cost_usd=cost + e.cost_usd,
-                caveats=caveats + [f"text2sql 拒答（{e.kind}）"],
+                caveats=caveats + [string("caveat_sql_refused", extra={"kind": e.kind})],
             )
         sql, rows = run.sql, run.rows
         cost += run.cost_usd
@@ -106,25 +106,28 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
                     }
                 )
             )
-        
 
-    has_kb = domain().has_kb
-    if not has_kb and query_plan.intent == "knowledge_lookup":
-        return Answer(
-            trace_id=trace_id,
-            answer=string("kb_unavailable"),
-            intent=query_plan.intent,
-            refused=True,
-            numbers_from_sql=False,
-            cost_usd=cost,
-            caveats=caveats,
-        )
-    if not has_kb and query_plan.intent == "mixed":
-        caveats.append(string("kb_explanation_unavailable"))
+        if not rows:
+            # 0 行是正常回答（"这段时间没有数据"），不是拒答，也不是数值为 0。
+            # mixed 也在这里结束：没有数字，就没有可解释的对象，不再花钱调知识库。
+            return Answer(
+                trace_id=trace_id,
+                answer=string("no_data"),
+                intent=query_plan.intent,
+                refused=False,
+                no_data=True,
+                sql=sql,
+                rows=[],
+                notes=notes,
+                numbers_from_sql=False,
+                cost_usd=cost,
+                caveats=caveats,
+            )
 
-    # W3：知识类、混合类走知识库。混合类把 SQL 结果一起交给 Claude，数字只许照抄。
-    if has_kb and query_plan.intent in ("knowledge_lookup", "mixed"):
-        kb = answer_from_kb(question, sql_rows=rows if query_plan.intent == "mixed" else None)
+    # 知识类、混合类走资料来源（有知识库的领域：知识库 + 指标字典；没有的：只有指标字典）。
+    # 混合类把 SQL 结果一起交给 Claude，数字只许照抄。
+    if query_plan.intent in ("knowledge_lookup", "mixed"):
+        kb = answer_from_knowledge(question, sql_rows=rows if query_plan.intent == "mixed" else None)
         cost += kb.cost_usd
 
         if query_plan.intent == "knowledge_lookup":
@@ -136,7 +139,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
                 citations=kb.citations,
                 numbers_from_sql=False,
                 cost_usd=cost,
-                caveats=caveats + ([f"知识库拒答（{kb.kind}）"] if kb.refused else []),
+                caveats=caveats + ([string("caveat_kb_refused", extra={"kind": kb.kind})] if kb.refused else []),
             )
 
         # mixed：数字已经有了，知识库答不上只是少了解释，不算整体拒答
@@ -152,7 +155,7 @@ def answer(question: str, *, as_of: str | None = None, scope: str | None = None)
             numbers_from_sql=bool(rows),
             cost_usd=cost,
             caveats=caveats + (
-                [f"数字已查到，但知识库没有给出解释（{kb.kind}）：{kb.answer}"] if kb.refused else []
+                [string("caveat_kb_no_explanation", extra={"kind": kb.kind, "detail": kb.answer})] if kb.refused else []
             ),
         )
 

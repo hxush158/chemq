@@ -45,8 +45,7 @@ metric_dictionary_title: '# Metric dictionary'
 marker_cannot_answer: '[CANNOT ANSWER]'
 marker_not_covered: '[NOT COVERED]'
 mcp_instructions_no_kb: 'Read-only query tools for {{data_name}}. Call list_metrics for metric definitions and the semantic catalog before writing SQL; numbers may only come from run_semantic_query results. This domain has no knowledge base and cannot provide explanations grounded in supporting documents.'
-kb_unavailable: This domain has no knowledge base and cannot answer questions that require supporting documents.
-kb_explanation_unavailable: This domain has no knowledge base and cannot provide an explanation grounded in supporting documents.
+dict_title: Metric dictionary
 schema_query_plan: Parse the user question into a structured query plan without SQL.
 schema_sql_candidate: A SQL candidate or an explicit reason for refusal.
 schema_time_start: ISO date YYYY-MM-DD
@@ -62,6 +61,7 @@ schema_metric_definitions_used: Which metric definition entries from the diction
 schema_assumptions: Statements the metric dictionary requires the answer to carry, one sentence each and without numbers; empty when none is required
 schema_answer_intent: Intent determined by the router; evals uses it for intent_acc
 schema_answer_refused: Whether the answer was refused; evals uses it for refuse_acc
+schema_answer_no_data: The query ran but returned 0 rows; a normal answer, not a refusal
 schema_answer_cost: Total API cost for this question and answer
 schema_answer_numbers_from_sql: True means all numbers come from SQL results and the model performed no arithmetic
 

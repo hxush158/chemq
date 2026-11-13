@@ -9,6 +9,7 @@ from typing import Literal
 import yaml
 
 from .domain import domain
+from .prompts import string
 from .schemas import QueryPlan
 
 
@@ -69,13 +70,15 @@ def check_time(plan: QueryPlan, coverage: tuple[date, date]) -> TimeVerdict:
     if plan.intent not in ("metric_query", "mixed"):
         return TimeVerdict(action="ok", plan=plan)
     if plan.time_range is None:
-        return TimeVerdict("refuse", plan, "查询计划缺少本期时间范围")
+        return TimeVerdict("refuse", plan, string("time_missing_range"))
 
     updates = {}
+    # 给用户看的拒答理由按领域包的语言取（prompts/<locale>/strings.yaml）
+    main_label, compare_label = string("time_label_main"), string("time_label_compare")
 
     for field, label, time_range in (
-        ("time_range", "本期", plan.time_range),
-        ("compare_range", "对比期", plan.compare_range),
+        ("time_range", main_label, plan.time_range),
+        ("compare_range", compare_label, plan.compare_range),
     ):
         if time_range is None:
             continue
@@ -85,7 +88,7 @@ def check_time(plan: QueryPlan, coverage: tuple[date, date]) -> TimeVerdict:
             date.fromisoformat(time_range.start)
             normalized_end = normalize_date_string(time_range.end)
         except ValueError:
-            return TimeVerdict("refuse", plan, f"{label}包含无效日期")
+            return TimeVerdict("refuse", plan, string("time_invalid_date", extra={"label": label}))
 
         if normalized_end != time_range.end:
             updates[field] = time_range.model_copy(
@@ -99,27 +102,27 @@ def check_time(plan: QueryPlan, coverage: tuple[date, date]) -> TimeVerdict:
         start = date.fromisoformat(plan.time_range.start)
         end = date.fromisoformat(plan.time_range.end)
     except ValueError:
-        return TimeVerdict("refuse", plan, "本期包含无效日期")
+        return TimeVerdict("refuse", plan, string("time_invalid_date", extra={"label": main_label}))
     if start > end:
-        return TimeVerdict("refuse", plan, "本期的开始日期晚于结束日期")
+        return TimeVerdict("refuse", plan, string("time_start_after_end", extra={"label": main_label}))
 
-    span = f"{coverage_start.isoformat()} 至 {coverage_end.isoformat()}"
+    span = string("data_range", extra={"start": coverage_start.isoformat(), "end": coverage_end.isoformat()})
     # 闭区间：恰好碰到边界的那一天仍然有交集。
     if end < coverage_start or start > coverage_end:
-        return TimeVerdict("refuse", plan, f"本期与数据覆盖范围 {span} 没有交集")
+        return TimeVerdict("refuse", plan, string("time_no_overlap", extra={"span": span}))
 
     if plan.compare_range is not None:
         try:
             compare_start = date.fromisoformat(plan.compare_range.start)
             compare_end = date.fromisoformat(plan.compare_range.end)
         except ValueError:
-            return TimeVerdict("refuse", plan, "对比期包含无效日期")
+            return TimeVerdict("refuse", plan, string("time_invalid_date", extra={"label": compare_label}))
         if compare_start > compare_end:
-            return TimeVerdict("refuse", plan, "对比期的开始日期晚于结束日期")
+            return TimeVerdict("refuse", plan, string("time_start_after_end", extra={"label": compare_label}))
         if compare_start < coverage_start or compare_end > coverage_end:
-            return TimeVerdict("refuse", plan, f"对比期未被数据覆盖范围 {span} 完整覆盖")
+            return TimeVerdict("refuse", plan, string("time_compare_not_covered", extra={"span": span}))
         if start < coverage_start or end > coverage_end:
-            return TimeVerdict("refuse", plan, f"本期未被数据覆盖范围 {span} 完整覆盖，不能进行两期对比")
+            return TimeVerdict("refuse", plan, string("time_main_partial_with_compare", extra={"span": span}))
         return TimeVerdict("ok", plan)
 
     clipped_start = max(start, coverage_start)
@@ -133,8 +136,8 @@ def check_time(plan: QueryPlan, coverage: tuple[date, date]) -> TimeVerdict:
         "end": clipped_end.isoformat(),
     })
     clipped_plan = plan.model_copy(update={"time_range": clipped_range})
-    reason = (
-        f"本期从 {start.isoformat()} 至 {end.isoformat()} 裁剪为 "
-        f"{clipped_range.start} 至 {clipped_range.end}，仅查询数据覆盖内的部分"
-    )
+    reason = string("time_clipped", extra={
+        "start": start.isoformat(), "end": end.isoformat(),
+        "clip_start": clipped_range.start, "clip_end": clipped_range.end,
+    })
     return TimeVerdict("clip", clipped_plan, reason)

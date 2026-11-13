@@ -163,6 +163,7 @@ def load_cases(
     path: Path = GOLDEN,
     *,
     content: bytes | None = None,
+    strict_citation: bool = False,
 ) -> list[dict]:
     text = (path.read_bytes() if content is None else content).decode("utf-8")
     cases = []
@@ -183,7 +184,7 @@ def load_cases(
         cases.append(case)
         line_numbers.append(line_no)
 
-    validate_cases(cases, path, line_numbers=line_numbers)
+    validate_cases(cases, path, line_numbers=line_numbers, strict_citation=strict_citation)
     return [case for case in cases if case["week"] <= week]
 
 def validate_must_contain(value: object) -> None:
@@ -213,8 +214,14 @@ def validate_cases(
     source: str | Path,
     *,
     line_numbers: list[int] | None = None,
+    strict_citation: bool = True,
 ) -> None:
-    """校验整个文件；首个错误立即抛出，带文件、行号和题号。"""
+    """校验整个文件；首个错误立即抛出，带文件、行号和题号。
+
+    strict_citation：引用题必须写非空的 must_contain。只对仓库外的题目文件（--file，
+    比如 NZ holdout）开启 —— 那是一次性测量，不许"只要有引用就算对"。
+    仓库内的老题（chem Q009 / Q020）没写 must_contain，含义是"有引用即可"，保持原样。
+    """
     required = ("id", "week", "intent", "question", "assert_type")
     allowed_types = {
         "sql", "refuse", "citation", "sql_and_citation", "no_data",
@@ -270,10 +277,10 @@ def validate_cases(
                         )
 
         if at in ("citation", "sql_and_citation"):
-            if "must_contain" not in case:
+            if strict_citation and "must_contain" not in case:
                 raise error("引用题缺少 must_contain")
 
-            must_contain = case["must_contain"]
+            must_contain = case.get("must_contain", [])
 
             # 公共函数只负责格式检查。
             try:
@@ -281,17 +288,21 @@ def validate_cases(
             except ValueError as exc:
                 raise error(str(exc)) from exc
 
-            # 引用题额外要求外层列表非空。
-            if not must_contain:
+            # 外部文件的引用题额外要求外层列表非空。
+            if strict_citation and not must_contain:
                 raise error("引用题的 must_contain 不能为空")
 
-            if "notes_must_contain" in case:
-                try:
-                    validate_must_contain(case["notes_must_contain"])
-                except ValueError as exc:
-                    raise error(
-                        f"notes_must_contain 格式错误：{exc}"
-                    ) from exc
+        if at == "no_data" and case.get("expected"):
+            raise error("no_data 题的 expected 必须为空或不写")
+
+        # 原先缩进在引用题分支里，sql 题的 notes_must_contain 没被校验。
+        if "notes_must_contain" in case:
+            try:
+                validate_must_contain(case["notes_must_contain"])
+            except ValueError as exc:
+                raise error(
+                    f"notes_must_contain 格式错误：{exc}"
+                ) from exc
                 
 
 def evaluate(
@@ -360,6 +371,20 @@ def evaluate(
 
             # 结果行必须正确；有说明要求时，说明也必须通过。
             r = rows_ok and (notes_ok is not False)
+            rep.execution.add(r)
+            due_failed = due_failed or not r
+        else:
+            waiting.append("sql")
+
+    if at == "no_data":
+        # 计入 exec_acc：查询要跑通、结果为 0 行、不能拒答、要明确标出"没有数据"。
+        if week >= DUE_FROM["sql"]:
+            rows_ok = not getattr(result, "rows", [])
+            r = (
+                rows_ok
+                and bool(getattr(result, "no_data", False))
+                and not bool(getattr(result, "refused", False))
+            )
             rep.execution.add(r)
             due_failed = due_failed or not r
         else:
@@ -459,7 +484,10 @@ def main() -> int:
         # 解析和哈希使用同一份字节，避免评测期间文件变化导致报告记错版本。
         case_bytes = case_path.read_bytes()
         cases_sha256 = hashlib.sha256(case_bytes).hexdigest()
-        cases = load_cases(args.week, case_path, content=case_bytes)
+        cases = load_cases(
+            args.week, case_path, content=case_bytes,
+            strict_citation=args.file is not None,
+        )
     except (OSError, ValueError) as exc:
         print(f"评测集校验失败：{exc}", file=sys.stderr)
         return 2
@@ -480,7 +508,7 @@ def main() -> int:
         if at == "refuse":
             case_counts["refuse"] +=1
 
-        if at in ("sql", "sql_and_citation"):
+        if at in ("sql", "sql_and_citation", "no_data"):
             case_counts["sql"] +=1
 
         if at in ("citation", "sql_and_citation"):

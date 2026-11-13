@@ -32,8 +32,8 @@
 |---|---|---|---|
 | W1 | 10/26–11/1 | 领域包抽出；数据库适配器扩展（DuckDB）；剥离 .NET | 同一引擎用化工包和 NZ 电力包各跑通 5 题；化工评测不退步 |
 | W2 | 11/2–11/8 | Snowflake 适配器（账号 W2 才开，之前对着 DuckDB 做） | 同一道题在 DuckDB 和 Snowflake 上结果一致 |
-| W3 | 11/9–11/15 | NZ 领域包 + 50–100 题评估集（含拒答题） | 准确率、拒答率出数，写进 README |
-| W4 | 11/16–11/22 | FastAPI + Streamlit，部署 Azure Container Apps；3 分钟演示视频；英文 README；写进 CV | 公网可访问 |
+| W3 | 11/9–11/19（11/13 顺延，原定 11/15） | NZ 领域包 + 50–100 题评估集（含拒答题） | 准确率、拒答率出数，写进 README |
+| W4 | 11/20–11/26（11/13 压缩，原定 11/16–11/22） | FastAPI + Streamlit，部署 Azure Container Apps；3 分钟演示视频（含 Snowflake 录屏，12/2 试用到期前）；英文 README；写进 CV | 公网可访问 |
 | 之后 | — | RAG（EA 报告）、发电数据、Langfuse、Azure OpenAI provider、LLM-as-judge、多 Agent / LangGraph | — |
 
 W1 剥离 .NET 的具体内容：删除 `gateway/` 目录（留在 git 历史里），
@@ -124,7 +124,9 @@ ChemQ 重建服务库、重算标准答案后零 diff（N001 不在那 43 行里
 4. `uv sync` 会让环境完全等于列出的依赖组：只写 `--extra dev --extra db` 会卸掉 agent 等依赖。用 `make install-all`
 5. 跨引擎"结果一致"要逐行比、不设容差，才抓得到 0.01 这种差异
 
-### W3 做法（11/8 定稿，11/10 修订）
+### W3 做法（11/8 定稿，11/10 修订，11/13 顺延）
+
+**11/13 顺延**：这周 nz-power 更新了三轮（发电数据、节点的岛和分区、字典 2026-11 → 11.2、判分规则、holdout 交接），第 0 步原定周一、周二做完，到 11/13 还剩 ③②④。按剩余工作量（5–6 天）把 W3 顺延到 11/19、W4 压缩到 11/20–11/26，不砍评测范围。Azure 账号和额度在 W3 期间先确认。
 
 目标：NZ 领域包 + 评测题（含拒答题），准确率和拒答率出数，写进 README。先做 60 道（golden 40 + holdout 20），时间宽裕再扩到 80–100，扩的部分进 golden。
 
@@ -150,7 +152,7 @@ ChemQ 重建服务库、重算标准答案后零 diff（N001 不在那 43 行里
 
 | 步 | 内容 | 谁做 | 时间 | 验收 |
 |---|---|---|---|---|
-| 0 | 清待办：① `run_eval` 的 citation 误报 + 输出写领域和方言；② 0 行时回答"没有数据"；③ 给用户看的文字按语言切换；④ 定义类问题用指标字典回答（`knowledge_lookup`），没有知识库时 `mixed` 的解释也用字典；⑤ 口径说明随结果返回（`assumptions` → `Answer.notes`，评测 `notes_must_contain`） | Hui；文案 Claude 起草 | 周一–周二 | 测试全过；chem 评测不退步 |
+| 0 | 清待办：① `run_eval` 的 citation 误报 + 输出写领域和方言；② 0 行时回答"没有数据"（pipeline 判定，`Answer.no_data`，不算拒答；`mixed` 0 行不再查资料）；③ 给用户看的文字按语言切换；④ 定义类问题用指标字典回答（`knowledge_lookup`），没有知识库时 `mixed` 的解释也用字典（11/13 定：资料来源 = 知识库命中 + 整份字典，合在一起交给模型；chem 无命中题改由模型判「未覆盖」，多一次调用；Agent 路径暂未接字典）；⑤ 口径说明随结果返回（`assumptions` → `Answer.notes`，评测 `notes_must_contain`） | Hui；文案 Claude 起草 | 周一–周二 | 测试全过；chem 评测不退步 |
 | 1 | 出题：golden 40（Claude 起草，Hui review）+ holdout 20（Hui 写）；参考 SQL Claude 起草 | 见左 | 周二–周三 | `make golden` 成功；`make cross-check` 在 Snowflake 上全部 SAME |
 | 2 | golden 基线 → 分析失败 → 只用 golden 调规则（字典问题集中交给 nz-power） | Hui 跑和改，Claude 分析失败 | 周三–周五 | golden：exec ≥ 0.90，refuse = 1.0 |
 | 3 | 最终测量：holdout 只跑一次；golden 连跑 3 次取均值；全部题在 Snowflake 上跑一次；Agent 跑一次 | Hui | 周六 | 如实记录 |
