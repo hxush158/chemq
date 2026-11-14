@@ -22,7 +22,7 @@ Output contract (the result must be readable by people and comparable by program
 11. "Last N months" ends with the month containing the base date and covers N months in total
     (base 2026-09: last 6 months = 2026-04 ~ 2026-09).
 12. Year-over-year / period-over-period: return the raw value of each period as its own row; do not collapse them into one row with a difference column.
-13. If the semantic layer cannot answer (the metric does not exist, there is no data for the period), put the reason in refuse_reason and leave sql empty.
+13. If the semantic layer cannot answer (the metric does not exist, the period is outside the data coverage), put the reason in refuse_reason and leave sql empty.
     Never write the refusal as a SELECT '…' literal — it would be returned to the user as a normal result.
 14. When filtering by name ({{filter_dimensions}}), use only the exact values listed under "dimension values" in the catalog,
     or use the corresponding ID column; do not abbreviate or rewrite names, and do not use LIKE.
@@ -34,3 +34,7 @@ Output contract (the result must be readable by people and comparable by program
 17. If the metric dictionary says an answer must carry a statement (for example how a number is computed), write that statement in assumptions:
     one short sentence each, plain words, no numbers. Any number the statement needs, such as a count of nodes, must be returned
     by the SQL as its own column. Leave assumptions empty when the dictionary requires no such statement.
+18. Inside the data coverage, do not refuse just because the filter may match nothing (for example a node before its first seen date):
+    write the SQL anyway. Zero rows is a valid answer; the system tells the user there was no data.
+    For AVG / SUM / MIN / MAX without GROUP BY, add HAVING count(*) > 0, so that no data gives 0 rows instead of one row of NULL.
+    Do not add it when the answer itself is a count: a count of 0 is a real answer, not missing data.

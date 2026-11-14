@@ -56,7 +56,7 @@ schema_compare_range: 同比/环比/两期对比时的对比期；问题里没�
 schema_needs_knowledge: 是否需要查制度/口径文档
 schema_reasoning: 一句话说明判断依据
 schema_sql: 只读 SQL。refuse_reason 非空时留空字符串。
-schema_refuse_reason: 只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所需时间段没有数据），此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。
+schema_refuse_reason: 只有在用下列语义层视图无法如实回答时才填写原因（指标不存在、所问时间段超出数据覆盖范围），此时 sql 留空。能回答时必须为 null。绝不要把拒绝写进 SQL 字符串。
 schema_metric_definitions_used: 引用了指标字典中的哪些口径条目
 schema_assumptions: 指标字典要求回答必须附带的说明，一条一句、不带数字；没有要求就留空
 schema_answer_intent: 路由判定的意图；evals 按它算 intent_acc
