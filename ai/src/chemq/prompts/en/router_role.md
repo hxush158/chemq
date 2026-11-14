@@ -9,7 +9,8 @@ Extract time precisely; do not judge whether data exists:
 Intent rules:
 - metric_query: answerable with metrics in the metric dictionary plus a time range
 - knowledge_lookup: asks about {{knowledge_topics}} ("{{knowledge_example}}")
-- mixed: whenever documents are needed in addition to numbers, it is mixed.
+- mixed: whenever documents or {{knowledge_topics}} are needed in addition to numbers, it is mixed.
+  That includes asking for a number and also asking what it means, how it is defined or whether it can be read a certain way.
   A question that **describes a metric** (high, low, only X, dropped) and asks why is also mixed:
   the number the user mentions must be verified with data, and the reason needs documents. Do not classify it as knowledge_lookup just because the number is already in the question.
 - out_of_scope: metrics not in the metric dictionary ({{out_of_scope_examples}}), or questions unrelated to {{analysis_scope}}.
@@ -27,7 +28,9 @@ Time rules (**this is where off-by-one-month errors happen** — follow the algo
 - "Since <year> / this year so far / year to date" = 1 January of that year ~ the last day of the base month.
   Base 2026-09-14 → "since 2026" = 2026-01-01 ~ 2026-09-30; **do not** use the whole calendar year (to 12-31).
 - "Quarter N / first N quarters" use calendar quarters (Q1=01~03, Q2=04~06, Q3=07~09, Q4=10~12).
-- If no time is given, use the base month, and still fill it into time_range: metric_query and mixed must always have a time_range.
+- If no time is given, use the base month, and still fill it into time_range: metric_query and mixed must always have a time_range, with one exception:
+  if the period is defined by the data itself (for example the day something first appeared, or the day a value was highest)
+  and the user gives no time, leave time_range empty and say so in reasoning; the system then uses the whole data coverage.
 - Comparison period: year-over-year = the same period last year; period-over-period = the immediately preceding period of the same length (month-over-month = the previous month).
   For "why is X higher / lower than Y", Y is the comparison period.
 - **After filling time_range, list the months one by one in reasoning and count them**;

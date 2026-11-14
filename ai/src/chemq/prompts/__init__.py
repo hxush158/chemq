@@ -34,6 +34,7 @@ RUNTIME_SLOTS = frozenset({
     "as_of", "question", "rows",  # 用户消息：基准日期、原话、SQL 结果
     "label", "span", "clip_start", "clip_end",   # 时间检查的拒答理由（coverage.py）
     "reason", "kind", "detail", "stop", "numbers", "tools",   # caveats、hook 拒绝理由
+    "sql", "error",        # text2sql 执行出错后修一次：出错的 SQL、数据库报错
 })
 
 _SLOT = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")

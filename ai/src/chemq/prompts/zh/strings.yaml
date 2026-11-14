@@ -37,6 +37,8 @@ router_user_message: |-
 text2sql_user_question: '用户原始问题：{{question}}'
 text2sql_base_date: '基准时间：{{as_of}}'
 text2sql_plan_title: '查询计划（上游解析器给出；如果有 time_range，以它为准，不要根据原始问题重新推算日期）：'
+text2sql_repair: "上一次生成的 SQL 执行出错，请按数据库报错修正。只能用语义层目录里列出的视图和列。\n出错的 SQL：{{sql}}\n数据库报错：{{error}}"
+sql_failed: 查询执行出错，自动修正一次后仍然失败，这个问题暂时答不了。
 kb_sql_results: |-
   数据库查询结果（系统已算好，照抄，不要重算）：
   {{rows}}
@@ -76,7 +78,6 @@ critic_scale_factors: '{"万": 10000, "亿": 100000000}'
 # zh 一字不改搬自 coverage.py / pipeline.py / agents.py / kb_answer.py，接上之后化工的输出不变。
 time_label_main: 本期
 time_label_compare: 对比期
-time_missing_range: 查询计划缺少本期时间范围
 time_invalid_date: '{{label}}包含无效日期'
 time_start_after_end: '{{label}}的开始日期晚于结束日期'
 time_no_overlap: '本期与数据覆盖范围 {{span}} 没有交集'

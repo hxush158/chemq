@@ -1,7 +1,7 @@
-# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ 54bc8fe
-# sha256 d26de10a01dc0b34e40fe29260b2bd46aaa6d65c30d06e52ea521956b9df73cc  (do not edit here: change it upstream, then make sync-nz-metrics)
+# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ e739b4f
+# sha256 0b512ca838f6873853b5ba0bd969aef5f0f4a6c1429dd1ad45f0101d78179087  (do not edit here: change it upstream, then make sync-nz-metrics)
 # NZ electricity price metrics. Query only the views listed under `views`; never query fact_* or dim_* tables.
-version: "2026-11.2"
+version: "2026-11.5"
 owner: "nz-power-pipeline"
 
 conventions:
@@ -11,7 +11,7 @@ conventions:
   price_unit: "NZD per MWh, 2 decimal places. Negative prices are real data; do not filter them out."
   price_version: "A period and node can have an interim price first and a final price later. Use mart_current_price, which already picks final when available and interim otherwise."
   node_id: "Node ids are upper-case strings such as ABY0111, not numbers."
-  fuel: "Fuel is one of Hydro, Wind, Geothermal, Solar, Gas, Coal, Diesel, Wood, Battery storage. Source codes use two spellings (for example Hydro and HYD); they are already unified."
+  fuel: "Fuel is one of Hydro, Wind, Geothermal, Solar, Gas, Coal, Diesel, Wood, Battery storage. Source codes use two spellings (for example Hydro and HYD); they are already unified. Battery storage appears in the fuel column but is storage, not a fuel: unless the user asks about batteries, exclude it from total generation, generation shares (both numerator and denominator) and fuel rankings, and say that it was excluded."
   generation: "Generation figures are EMI estimates (metered grid injections mapped to plants), in kWh per trading period; divide by 1000 for MWh. They come from mart_daily_generation and mart_daily_generation_weighted_price."
   cross_node_average: "An average of node prices across nodes (for example by island or zone, for one day or several) is computed one way only: average the mart_current_price rows in scope directly, so every node-period price counts once. Do not average per-node daily averages (avg_price) and do not average daily averages across days. It is unweighted (no volume data), and a node with missing periods, such as a new node on its first day, contributes fewer rows; the set of nodes can also change over time. It is supported, but always say that it is an unweighted simple average of node prices and give the number of nodes and the date range it covers; never present it as a market price, a reference price or the price consumers pay. Worked example: North Island on 2026-04-08 has 162 nodes and 7,755 price rows (WHU1101 first appears that day with 27 of 48 periods), and the average is 162.08 NZD/MWh. Nodes also differ a lot within an island on the same day (for example, daily average prices of South Island nodes on 2026-07-15 ran from 7.78 to 61.88 NZD/MWh)."
   reference_nodes: "New Zealand has nodal pricing and there is no single national price. The usual benchmark nodes are OTA2201 (Otahuhu, North Island) and BEN2201 (Benmore, South Island); this is market convention, not something stored in the data. For a question about the national or island price level, say there is no single national price and give the prices at OTA2201 and BEN2201; only if the user insists, add the all-node simple average together with the caveat in cross_node_average."
@@ -127,6 +127,19 @@ metrics:
       - "NULL means the node already existed at the start of the data (a baseline node) and its real start date is unknown; it does not mean the node has no data."
       - "It is the first date in this data set, not necessarily when the node actually began operating."
 
+  - name: Number of nodes
+    en: node_count
+    aliases: ["how many nodes", "number of nodes", "node count"]
+    unit: nodes
+    view: v_dim_node
+    column: node_id
+    aggregation: count_distinct
+    definition: Number of distinct nodes, computed as count(distinct node_id) over v_dim_node, optionally grouped or filtered by island, zone or region.
+    pitfalls:
+      - "Without a date it counts every node seen in the data up to the base date, including nodes that first appeared during the period. For the number of nodes on a given date, count the nodes whose first_seen_date is NULL or on or before that date. v_dim_node has no end date, so a node that stopped trading would still be counted."
+      - "region is NULL for 19 nodes (the 18 transmission-grid nodes plus KAW2201) and zone is NULL for KAW2201, so these nodes are left out of counts by region or zone; an island total can be larger than the sum of its zones or regions."
+      - "region values name the area and the distribution company in brackets, for example Waikato (WEL Networks); match a company or area name with a pattern on region rather than an exact value."
+
   - name: Daily generation
     en: generation_kwh
     aliases: ["generation", "output", "electricity generated", "supply by fuel"]
@@ -138,7 +151,7 @@ metrics:
       - "An EMI estimate (metered grid injections mapped to plants), not figures reported by the plants."
       - "kWh, not MWh: divide by 1000 for MWh and by 1,000,000 for GWh."
       - "Includes plants at nodes that have no price (for example WPG0331); their island and zone are NULL, so adding up only the rows with an island leaves them out."
-      - "Battery storage appears as a fuel; do not read its figure as renewable generation."
+      - "Battery storage is storage, not generation: its figure is discharge of electricity taken from the grid earlier, which was already counted when it was generated, so adding it would be counted twice. Exclude it from total generation and generation shares unless the user asks about batteries, and say so; never read its figure as renewable generation."
 
   - name: Number of generating plants
     en: plant_count
@@ -159,11 +172,12 @@ metrics:
     definition: Average price at which a fuel's generation was sold on one trading day in one island, weighted by the estimated generation in each trading period at each node, rounded to 2 decimals.
     pitfalls:
       - "This is a supply-side price, not a demand-weighted price and not the average price consumers pay: there is still no demand or consumption volume data."
-      - "Covers only generation at nodes that have a price (about 99.6 percent of all generation for 2026-04 to 2026-09); compare priced_generation_kwh here with generation_kwh in mart_daily_generation."
+      - "Covers only generation at nodes that have a price (about 99.6 percent of all generation for 2026-04 to 2026-09); compare priced_generation_kwh (column generation_kwh in mart_daily_generation_weighted_price) with generation_kwh in mart_daily_generation."
       - "NULL when the fuel's generation weight for that day is 0."
       - "If interim_generation_kwh is greater than 0, part of the price is still interim and may be revised."
-      - "Do not average several days of weighted_avg_price with a plain average; weight each day by priced_generation_kwh."
+      - "Do not average several days of weighted_avg_price with a plain average; weight each day by priced_generation_kwh (column generation_kwh in mart_daily_generation_weighted_price)."
       - "Prices can be negative; do not filter them."
+      - "Battery storage is not a fuel: leave it out when ranking or comparing fuels by weighted_avg_price. Batteries discharge at high-price times, so their weighted price is often the highest; mention it separately if relevant."
 
   - name: Generation with a price
     en: priced_generation_kwh
@@ -181,6 +195,6 @@ metrics:
     unit: kWh
     view: mart_daily_generation_weighted_price
     column: interim_generation_kwh
-    definition: Part of priced_generation_kwh whose price is still interim. 0 means weighted_avg_price is based entirely on final prices.
+    definition: Part of priced_generation_kwh (column generation_kwh in mart_daily_generation_weighted_price) whose price is still interim. 0 means weighted_avg_price is based entirely on final prices.
     pitfalls:
       - "Use this to decide whether a weighted price is final; do not infer it from the date."

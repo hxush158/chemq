@@ -10,7 +10,7 @@ import yaml
 
 from .domain import domain
 from .prompts import string
-from .schemas import QueryPlan
+from .schemas import QueryPlan, TimeRange
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,11 @@ def check_time(plan: QueryPlan, coverage: tuple[date, date]) -> TimeVerdict:
     if plan.intent not in ("metric_query", "mixed"):
         return TimeVerdict(action="ok", plan=plan)
     if plan.time_range is None:
-        return TimeVerdict("refuse", plan, string("time_missing_range"))
+        # 11/15 Hui 选 A：日期由数据本身决定（比如节点第一次出现那天）、用户又没给时间时，Router 按规则留空。
+        # 时间仍由代码管（ad1a5da）：用整个数据覆盖范围。pipeline 会把实际用的日期范围写进口径说明，用户看得到。
+        plan = plan.model_copy(update={"time_range": TimeRange(
+            start=coverage_start.isoformat(), end=coverage_end.isoformat(), grain="day",
+        )})
 
     updates = {}
     # 给用户看的拒答理由按领域包的语言取（prompts/<locale>/strings.yaml）

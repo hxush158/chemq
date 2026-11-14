@@ -281,7 +281,7 @@ When filtering by name, use only these exact values (character for character), o
 - WWD1102 · Westwind · NI · LNI
 - WWD1103 · Westwind · NI · LNI
 
-### Region (region; NULL for the 18 transmission-grid nodes)
+### Region (region; NULL for 19 nodes, the 18 transmission-grid nodes and KAW2201)
 - Ashburton (Electricity Ashburton)
 - Auckland (Vector)
 - Bay of Islands (Top Energy)

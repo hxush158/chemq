@@ -14,11 +14,11 @@ catalog:
   # 数据覆盖区间按哪一列算（coverage.yaml、Router 的 data_range）
   date_column: {relation: mart_daily_price, column: trading_date}
   # 维度取值：节点列出 id、名称、岛、分区，用户说名称（Haywards、Otahuhu）模型也能对上 id。
-  # NULL 自动跳过（KAW2201 没有 zone）。region（配电网区域）单独列取值，18 个输电节点没有 region。燃料只有 9 种，全部列出。
+  # NULL 自动跳过（KAW2201 没有 zone）。region（配电网区域）单独列取值，19 个节点没有 region（18 个输电节点和 KAW2201，字典 2026-11.5）。燃料只有 9 种，全部列出。
   values:
     - title: Node (node_id · node_name · island · zone · first_seen_date)
       sql: SELECT node_id, node_name, island, zone, first_seen_date FROM v_dim_node ORDER BY 1
-    - title: Region (region; NULL for the 18 transmission-grid nodes)
+    - title: Region (region; NULL for 19 nodes, the 18 transmission-grid nodes and KAW2201)
       sql: SELECT DISTINCT region FROM v_dim_node WHERE region IS NOT NULL ORDER BY 1
     - title: Fuel (fuel)
       sql: SELECT DISTINCT fuel FROM mart_daily_generation ORDER BY 1

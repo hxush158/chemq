@@ -450,8 +450,6 @@ def contains_all(text: str, must_contain: list) -> bool:
     return all(_hit(norm, item) for item in must_contain)
 
 def main() -> int:
-    ## 开头打印：增加领域 ID 和当前 SQL 方言 #
-    print(f"领域ID: {domain().id} ,当前SQL方言: {settings().sql_dialect}")
     ap = argparse.ArgumentParser()
     ap.add_argument("--week", type=int, default=1)
     ap.add_argument("--json", type=Path)
@@ -513,7 +511,6 @@ def main() -> int:
 
         if at in ("citation", "sql_and_citation"):
             case_counts["citation"] +=1
-        print(f"领域ID: {domain().id} ,当前SQL方言: {settings().sql_dialect}")
     print(f"领域ID: {domain().id}  当前SQL方言: {settings().sql_dialect} 评测集: {args.case_set} {len(cases)} 题 (week<={args.week})  做法: {args.engine}\n")
 
     for c in cases:

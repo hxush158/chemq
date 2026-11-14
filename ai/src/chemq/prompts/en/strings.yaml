@@ -37,6 +37,8 @@ router_user_message: |-
 text2sql_user_question: 'Original user question: {{question}}'
 text2sql_base_date: 'Base date: {{as_of}}'
 text2sql_plan_title: 'Query plan (from the upstream parser; if time_range is present, use it as authoritative and do not recalculate dates from the original question):'
+text2sql_repair: "The SQL generated last time failed to run. Fix it according to the database error. Use only the views and columns listed in the semantic catalog.\nFailed SQL: {{sql}}\nDatabase error: {{error}}"
+sql_failed: The query failed to run and still failed after one automatic correction, so this question cannot be answered right now.
 kb_sql_results: |-
   Database query results (already calculated by the system; copy them, do not recalculate):
   {{rows}}
@@ -75,7 +77,6 @@ critic_scale_factors: '{"thousand": 1000, "million": 1000000, "billion": 1000000
 # ---- User-facing text (W3 step 0): refusal reasons, caveats, knowledge-base notices, no data ----
 time_label_main: The requested period
 time_label_compare: The comparison period
-time_missing_range: The query plan has no time range for the requested period
 time_invalid_date: '{{label}} contains an invalid date'
 time_start_after_end: '{{label}} starts after it ends'
 time_no_overlap: 'The requested period does not overlap the data coverage ({{span}})'

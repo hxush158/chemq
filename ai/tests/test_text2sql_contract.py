@@ -167,3 +167,77 @@ def test_pipeline_passes_question_and_as_of(monkeypatch):
     pipeline.answer("9月一次合格率最低的两个装置？", as_of="2026-09-14")
     assert seen["question"] == "9月一次合格率最低的两个装置？"
     assert seen["as_of"] == "2026-09-14"
+
+
+# ================= ④ 执行出错修一次（11/15 NZ 基线 N020） =================
+
+class ProgrammingError(Exception):
+    """模拟驱动抛的 SQL 错误：按类名认，和 DuckDB / psycopg / Snowflake 一样。"""
+
+
+class OperationalError(Exception):
+    """模拟连不上、超时这类环境错误。"""
+
+
+class SeqLlm:
+    """按顺序返回几个候选，记下每次调用。"""
+
+    def __init__(self, *candidates: SqlCandidate) -> None:
+        self.candidates, self.calls = list(candidates), []
+
+    def parse(self, **kw):
+        self.calls.append(kw)
+        return LlmResult(parsed=self.candidates[len(self.calls) - 1], usage=SONNET)
+
+
+BAD = SqlCandidate(sql="SELECT 不存在的列 FROM chem.v_plant_daily")
+GOOD = SqlCandidate(sql="SELECT 产量_t FROM chem.v_plant_daily")
+
+
+def _run_query_failing(times: int, exc_type=ProgrammingError):
+    calls = []
+
+    def run(sql, scope=None):
+        calls.append(sql)
+        if len(calls) <= times:
+            raise exc_type('Binder Error: column "不存在的列" not found')
+        return [{"v": 1}]
+    return run, calls
+
+
+def test_sql_error_is_repaired_once_with_the_error_message(monkeypatch):
+    run, calls = _run_query_failing(1)
+    monkeypatch.setattr(t2s, "run_query", run)
+    fake = SeqLlm(BAD, GOOD)
+    result = generate_and_run(PLAN, llm=cast(Llm, fake))
+    assert result.rows == [{"v": 1}] and "产量_t" in result.sql
+    assert result.cost_usd == pytest.approx(SONNET.cost_usd * 2)       # 两次调用都要记成本
+    repair_msg = fake.calls[1]["user"]
+    assert "不存在的列" in repair_msg and "Binder Error" in repair_msg   # 出错的 SQL 和报错原文都交给了模型
+    assert fake.calls[1]["system"] == fake.calls[0]["system"]           # system 不变，缓存照样命中
+
+
+def test_sql_error_twice_becomes_refusal_not_crash(monkeypatch):
+    run, _ = _run_query_failing(2)
+    monkeypatch.setattr(t2s, "run_query", run)
+    with pytest.raises(Unanswerable) as e:
+        generate_and_run(PLAN, llm=cast(Llm, SeqLlm(BAD, BAD)))
+    assert e.value.kind == "sql_error"
+    assert e.value.cost_usd == pytest.approx(SONNET.cost_usd * 2)
+
+
+def test_environment_error_is_not_sent_to_the_model(monkeypatch):
+    run, _ = _run_query_failing(1, OperationalError)
+    monkeypatch.setattr(t2s, "run_query", run)
+    fake = SeqLlm(GOOD, GOOD)
+    with pytest.raises(OperationalError):
+        generate_and_run(PLAN, llm=cast(Llm, fake))
+    assert len(fake.calls) == 1                                          # 连不上不是 SQL 的错，不让模型改
+
+
+def test_repaired_sql_still_goes_through_the_guard(monkeypatch):
+    run, _ = _run_query_failing(1)
+    monkeypatch.setattr(t2s, "run_query", run)
+    with pytest.raises(Unanswerable) as e:
+        generate_and_run(PLAN, llm=cast(Llm, SeqLlm(BAD, SqlCandidate(sql="SELECT '查不到'"))))
+    assert e.value.kind == "guard_rejected"

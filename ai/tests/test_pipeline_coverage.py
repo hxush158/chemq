@@ -136,3 +136,14 @@ def test_rows_present_is_not_no_data(stages):
     set_plan(stages, "2026-01-01", "2026-01-31")
     result = pipeline.answer("有数据的月份", scope="test-scope")
     assert not result.no_data and result.rows == [{"v": 1}]
+
+
+
+def test_missing_time_range_queries_whole_coverage_and_says_so(stages):
+    plan = QueryPlan(intent="metric_query", needs_knowledge=False, reasoning="日期由数据决定")
+    stages.router.return_value = NS(parsed=plan, usage=NS(cost_usd=0.001))
+    result = pipeline.answer("OHG1101 第一次出现那天的最高价")
+    sent = stages.sql.call_args.args[0]
+    assert (sent.time_range.start, sent.time_range.end) == ("2025-10-01", "2026-09-30")
+    assert not result.refused
+    assert "2025-10-01" in result.notes[-1] and "2026-09-30" in result.notes[-1]   # 口径说明里写明实际用的范围

@@ -1,7 +1,7 @@
 # Router 的 few-shot 示例（NZ 电力）。格式同 domains/chem/router_examples.yaml。
 # ⚠ 不要写评测题原话，也别用评测题的节点 + 日期组合（eval/cases.yaml 用了 OTA2201 / HAY2201 / BEN2201）。
 # ⚠ 出评测题时反过来也要避开这里的组合：ISL2201、WKM2201；SI 8 月按燃料；NI 风电 7 月加权价；地热 5/1；
-#   NI 7 月按岛平均价；9/29 的全国价（OTA2201 + BEN2201）。
+#   NI 7 月按岛平均价；9/29 的全国价（OTA2201 + BEN2201）；ROX2201 8/14；负电价的含义。
 # 指标名用 metric_dictionary.yaml 里的 name。基准时间的写法要和 pipeline 给 Router 的前缀一致（第 5 项改成按语言取）。
 - note: '(one node, one trading day)'
   question: |-
@@ -63,3 +63,13 @@
     Base date: 2026-09-30
     User question: What was the national electricity price yesterday?
   plan: '{"intent": "metric_query", "metrics": ["Daily average price"], "dimensions": ["node_id"], "filters": {"node_id": "OTA2201, BEN2201"}, "time_range": {"start": "2026-09-29", "end": "2026-09-29", "grain": "day"}, "needs_knowledge": false, "reasoning": "New Zealand has nodal pricing, so there is no single national price (reference_nodes). Answer with the daily average price at the benchmark nodes OTA2201 (North Island) and BEN2201 (South Island) for 2026-09-29, one row per node."}'
+- note: '(a number plus what it means: mixed; the explanation comes from the metric dictionary)'
+  question: |-
+    Base date: 2026-09-30
+    User question: How many interim periods did ROX2201 have on 14 August, and what does an interim price mean?
+  plan: '{"intent": "mixed", "metrics": ["Number of interim periods"], "filters": {"node_id": "ROX2201"}, "time_range": {"start": "2026-08-14", "end": "2026-08-14", "grain": "day"}, "needs_knowledge": true, "reasoning": "The number comes from the data (one node, one trading day, 2026-08-14); what an interim price means is a market convention answered from the metric dictionary. Both are needed, so it is mixed."}'
+- note: '(definition or market convention only, no number from the data: knowledge_lookup)'
+  question: |-
+    Base date: 2026-09-30
+    User question: Why can electricity prices be negative?
+  plan: '{"intent": "knowledge_lookup", "metrics": [], "needs_knowledge": true, "reasoning": "Asks about a market convention, not a number from the data; answered from the metric dictionary."}'

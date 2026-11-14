@@ -148,3 +148,25 @@ def test_guard_rejection_prevents_query(comparison_setup, capsys):
     assert "DIFF T001" in output
     assert "护栏拒绝" in output
     setup.engine.run_query.assert_not_called()
+
+@pytest.mark.parametrize("actual, same", [
+    (Decimal("45.020000"), True),     # Snowflake NUMBER 的固定小数位：同一个数
+    (Decimal("45.0201"), False),      # 真的不同，不能被"统一写法"吞掉
+])
+def test_trailing_zeros_are_formatting_not_difference(comparison_setup, capsys, actual, same):
+    setup = comparison_setup
+    setup.engine.run_query.return_value = [{"price": actual}]
+    write_case(setup)
+
+    exit_code = compare_engine.main()
+
+    assert (exit_code == 0) is same
+    assert ("SAME T001" in capsys.readouterr().out) is same
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("18884.722000", "18884.722"), ("50", "50"), ("100.00", "100"),
+    ("-0.00", "0"), ("2026-06-24", "2026-06-24"), ("Coal", "Coal"),
+])
+def test_canonical_only_changes_number_formatting(value, expected):
+    assert compare_engine.canonical(value) == expected

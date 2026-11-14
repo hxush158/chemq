@@ -65,3 +65,17 @@ def test_holdout_questions_never_appear_in_any_prompt():
         if line.strip():
             q = json.loads(line)["question"]
             assert not any(q in p for p in prompts), q
+
+
+@pytest.mark.parametrize("domain_id", ["chem", "nz_power"])
+def test_router_examples_cover_every_intent_and_never_copy_golden(domain_id):
+    """11/15 NZ 基线：NZ 的示例里一道 mixed / knowledge_lookup 都没有，数值加解释题全被判成纯数值。
+    每个领域的示例都要覆盖四种意图；上面那条泄题检查只看默认领域，这里每个领域都查。"""
+    from chemq.domain import load_domain
+    d = load_domain(domain_id)
+    text = d.router_examples_path.read_text(encoding="utf-8")
+    for intent in ("metric_query", "knowledge_lookup", "mixed", "out_of_scope"):
+        assert f'"intent": "{intent}"' in text, intent
+    golden = [json.loads(x)["question"] for x in d.golden_path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    for q in golden:
+        assert q not in text, q

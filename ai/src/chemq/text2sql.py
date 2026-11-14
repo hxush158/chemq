@@ -85,7 +85,7 @@ class Unanswerable(PermissionError):
     def __init__(self, reason: str, *, kind: str, cost_usd: float = 0.0, sql: str = "") -> None:
         super().__init__(reason)
         self.reason = reason
-        self.kind = kind            # model_refused / guard_rejected / parse_failed
+        self.kind = kind            # model_refused / guard_rejected / parse_failed / sql_error
         self.cost_usd = cost_usd
         self.sql = sql
 
@@ -125,8 +125,13 @@ def generate(
     *,
     question: str = "",
     as_of: str | None = None,
+    repair: tuple[str, str] | None = None,
 ) -> LlmResult:
-    """返回 LlmResult 而不只是 SqlCandidate —— 调用方需要 usage 来记成本。"""
+    """返回 LlmResult 而不只是 SqlCandidate —— 调用方需要 usage 来记成本。
+
+    repair=(出错的 SQL, 数据库报错)：执行出错后修一次时用，报错原文附在 user 消息末尾。
+    system 不变，prompt cache 照样命中。
+    """
     llm = llm or Llm()
     system = Llm.cached_system(
         system_role(),
@@ -136,9 +141,39 @@ def generate(
     return llm.parse(
         model=settings().model_sql,
         system=system,
-        user=build_user_message(plan, question=question, as_of=as_of),
+        user=build_user_message(plan, question=question, as_of=as_of) + (
+            "\n" + string("text2sql_repair", extra={"sql": repair[0], "error": repair[1]}) if repair else ""
+        ),
         schema=SqlCandidate,
     )
+
+
+# PEP 249 里"SQL 本身写错了"的两类：语法、列名表名不存在（ProgrammingError），类型转换、除零（DataError）。
+# DuckDB、psycopg、Snowflake 的驱动都按这个层级抛异常，按类名认，不用 import 可选依赖。
+# 连不上、超时、凭证过期（OperationalError 等）不在里面：那是环境问题，让模型改 SQL 没用，照常抛出。
+SQL_ERROR_CLASSES = {"ProgrammingError", "DataError"}
+MAX_ERROR_CHARS = 600
+
+
+def is_sql_error(exc: BaseException) -> bool:
+    return any(cls.__name__ in SQL_ERROR_CLASSES for cls in type(exc).__mro__)
+
+
+def _validated(res: LlmResult, cost: float) -> tuple[SqlCandidate, str]:
+    """模型输出 → 通过护栏的 SQL。答不了时抛 Unanswerable（带到目前为止的累计成本）。"""
+    candidate: SqlCandidate | None = res.parsed
+    if candidate is None:
+        raise Unanswerable("模型没有返回可解析的结构化结果", kind="parse_failed", cost_usd=cost)
+    if candidate.refuse_reason:
+        raise Unanswerable(candidate.refuse_reason, kind="model_refused", cost_usd=cost)
+    verdict = check(candidate.sql, domain().allowed_relations, settings().max_rows)
+    # ok=True 时 rewritten_sql 一定非 None，但这是 sqlguard 的"约定"，不是类型系统能看见的事实。
+    if not verdict.ok or verdict.rewritten_sql is None:
+        raise Unanswerable(
+            "SQL 未通过护栏: " + "; ".join(verdict.violations),
+            kind="guard_rejected", cost_usd=cost, sql=candidate.sql,
+        )
+    return candidate, verdict.rewritten_sql
 
 
 def generate_and_run(
@@ -156,20 +191,22 @@ def generate_and_run(
     """
     res = generate(plan, llm, question=question, as_of=as_of)
     cost = res.usage.cost_usd
-    candidate: SqlCandidate | None = res.parsed
+    candidate, sql = _validated(res, cost)
+    try:
+        return SqlRun(sql=sql, rows=run_query(sql, scope=scope), candidate=candidate, cost_usd=cost)
+    except Exception as exc:  # noqa: BLE001 —— 只接 SQL 写错的那两类，其余原样抛出
+        if not is_sql_error(exc):
+            raise
+        error = f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS]
 
-    if candidate is None:
-        raise Unanswerable("模型没有返回可解析的结构化结果", kind="parse_failed", cost_usd=cost)
-
-    if candidate.refuse_reason:
-        raise Unanswerable(candidate.refuse_reason, kind="model_refused", cost_usd=cost)
-
-    verdict = check(candidate.sql, domain().allowed_relations, settings().max_rows)
-    # ok=True 时 rewritten_sql 一定非 None，但这是 sqlguard 的"约定"，不是类型系统能看见的事实。
-    if not verdict.ok or verdict.rewritten_sql is None:
-        raise Unanswerable(
-            "SQL 未通过护栏: " + "; ".join(verdict.violations),
-            kind="guard_rejected", cost_usd=cost, sql=candidate.sql,
-        )
-    sql = verdict.rewritten_sql
-    return SqlRun(sql=sql, rows=run_query(sql, scope=scope), candidate=candidate, cost_usd=cost)
+    # 执行出错（11/15 NZ 基线 N020：用了不存在的列）：把报错交给模型修一次，修好的 SQL 照样过护栏。
+    res = generate(plan, llm, question=question, as_of=as_of, repair=(sql, error))
+    cost += res.usage.cost_usd
+    candidate, sql = _validated(res, cost)
+    try:
+        return SqlRun(sql=sql, rows=run_query(sql, scope=scope), candidate=candidate, cost_usd=cost)
+    except Exception as exc:  # noqa: BLE001
+        if not is_sql_error(exc):
+            raise
+        # 修一次还错：拒答，不是崩溃。原始报错留在异常链里，排查时看得到。
+        raise Unanswerable(string("sql_failed"), kind="sql_error", cost_usd=cost, sql=sql) from exc

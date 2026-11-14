@@ -91,9 +91,14 @@ def test_non_numeric_intents_bypass_time_check(intent):
 
 
 @pytest.mark.parametrize("intent", ["metric_query", "mixed"])
-def test_numeric_intents_require_main_period(intent):
-    plan = QueryPlan(intent=intent, needs_knowledge=False, reasoning="缺失时间")
-    assert coverage.check_time(plan, COVERAGE).action == "refuse"
+def test_missing_main_period_uses_whole_coverage(intent):
+    """原来缺时间就拒答。11/15 Hui 选 A：日期由数据决定的问题（"OHG1101 第一次出现那天"）Router 留空，
+    代码用整个数据覆盖范围，原计划不改。"""
+    plan = QueryPlan(intent=intent, needs_knowledge=False, reasoning="日期由数据决定")
+    verdict = coverage.check_time(plan, COVERAGE)
+    assert verdict.action == "ok"
+    assert (verdict.plan.time_range.start, verdict.plan.time_range.end) == ("2026-01-01", "2026-09-30")
+    assert plan.time_range is None
 
 
 def test_mixed_query_checks_time():

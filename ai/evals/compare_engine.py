@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import sqlglot
@@ -53,6 +54,25 @@ def select_sql(case: dict, source_dialect:str, target_dialect:str) -> str:
         raise ValueError("参考 SQL 必须翻译成一条非空语句")
 
     return statements[0]
+
+def canonical(value):
+    """数值只统一写法：去掉尾随的 0（Snowflake 的 NUMBER 带固定小数位，18884.722 会写成 18884.722000）。
+    不放宽数值：18884.7221 和 18884.722 仍然不同。日期、文字等不是数字的原样返回。"""
+    if not isinstance(value, str):
+        return value
+    try:
+        number = Decimal(value)
+    except InvalidOperation:
+        return value
+    if not number.is_finite():
+        return value
+    text = format(number.normalize(), "f")
+    return "0" if text == "-0" else text
+
+
+def canonical_rows(rows: list[dict]) -> list[dict]:
+    return [{key: canonical(value) for key, value in row.items()} for row in rows]
+
 
 def sorted_rows(rows: list[dict]) -> list[dict]:
     return sorted(
@@ -114,7 +134,7 @@ def main() -> int:
                 for row in target_engine.run_query(sql)
             ]
 
-            same = sorted_rows(expected) == sorted_rows(actual)
+            same = sorted_rows(canonical_rows(expected)) == sorted_rows(canonical_rows(actual))
 
         except Exception as exc:
             failures += 1
