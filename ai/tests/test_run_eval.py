@@ -223,3 +223,14 @@ def test_repo_golden_files_pass_validation():
         for path in (d.golden_path, d.holdout_path):
             if path.exists():
                 run_eval.load_cases(99, path)
+
+
+def test_empty_case_set_is_an_error_not_a_pass(monkeypatch, tmp_path, capsys):
+    """空的评测集（比如 NZ 仓库里的 holdout.jsonl）必须报错，不能打印"全部通过"。"""
+    empty = tmp_path / "holdout.jsonl"
+    empty.write_text("", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--week", "6", "--dry", "--file", str(empty)])
+    monkeypatch.setattr(run_eval, "domain", lambda: SimpleNamespace(id="test", config={}))
+    monkeypatch.setattr(run_eval, "settings", lambda: SimpleNamespace(sql_dialect="test"))
+    assert run_eval.main() == 2
+    assert "没有题" in capsys.readouterr().err

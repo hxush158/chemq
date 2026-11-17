@@ -496,6 +496,13 @@ def main() -> int:
         missing = want - {c["id"].upper() for c in cases}
         if missing:
             print(f"⚠ 这些题号在 week<={args.week} 的范围里不存在：{sorted(missing)}")
+    if not cases:
+        # 11/17：NZ 仓库里的 holdout.jsonl 是 make golden 生成的空文件，真的 holdout 在仓库外。
+        # 用 SET=holdout 跑它会是 0 题，旧代码照样打印"全部通过"—— 最后一次测量最怕这种假绿。
+        print(f"评测集没有题：{case_path}（week<={args.week}"
+              f"{'，--only ' + args.only if args.only else ''}）。"
+              "NZ 的 holdout 在仓库外，用 HOLDOUT=/路径/文件.jsonl 传入", file=sys.stderr)
+        return 2
     rep = Report()
 
     case_counts = {"refuse": 0, "sql": 0, "citation": 0}
