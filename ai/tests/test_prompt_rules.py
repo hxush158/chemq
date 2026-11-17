@@ -79,3 +79,27 @@ def test_router_examples_cover_every_intent_and_never_copy_golden(domain_id):
     golden = [json.loads(x)["question"] for x in d.golden_path.read_text(encoding="utf-8").splitlines() if x.strip()]
     for q in golden:
         assert q not in text, q
+
+
+def test_external_holdout_never_appears_in_prompts():
+    """NZ 的 holdout 在仓库外，上面那条只查仓库里的文件，查不到它。make check-holdout 用环境变量把路径传进来。
+    失败时只报行号、不打印题目原文：输出可以放心贴给别人看。"""
+    import os
+    from pathlib import Path
+
+    from chemq import agents, kb_answer, tools
+    from chemq.config import settings
+    from chemq.text2sql import system_role
+
+    path = os.environ.get("CHEMQ_HOLDOUT_FILE")
+    if not path:
+        pytest.skip("没有指定 CHEMQ_HOLDOUT_FILE（用 make check-holdout）")
+    prompts = [router.SYSTEM_ROLE, router.FEW_SHOT_EXAMPLES, system_role(settings().sql_dialect),
+               agents.SYSTEM_PROMPT, tools.DESC_RUN_SQL, kb_answer.SYSTEM_PROMPT]
+    leaked = []
+    for line_no, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
+        if line.strip():
+            question = json.loads(line)["question"]
+            if any(question in p for p in prompts):
+                leaked.append(line_no)
+    assert not leaked, f"holdout 第 {leaked} 行的题目出现在提示词里"

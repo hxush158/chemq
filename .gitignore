@@ -34,3 +34,6 @@ domains/*/data/*.duckdb
 *.duckdb.wal
 # 口径送审表（make review-golden 生成）：送审前现生成，不进仓库
 domains/*/eval/review_*.md
+# NZ 的 holdout 只放仓库外（nz-power-pipeline/eval_holdout/），用 HOLDOUT=/路径 传入。
+# make golden 仍会在这里写一个空文件；忽略它，就算有人把真题复制进来，git 也不会收。
+domains/nz_power/eval/holdout.jsonl

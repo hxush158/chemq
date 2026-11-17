@@ -158,6 +158,12 @@ eval-dry:        ## 不调 API，只自检评测集
 eval:            ## 跑评测  用法: make eval WEEK=1  （ENGINE=agent 换做法；SET=holdout 跑新题；HOLDOUT=/路径/文件.jsonl 用仓库外的题）
 	cd ai && $(QUERY_ENV) uv run python evals/run_eval.py --week $${WEEK:-1} --engine $${ENGINE:-pipeline} --set $${SET:-golden} $(if $(HOLDOUT),--file "$(abspath $(HOLDOUT))") --json ../eval-report.json
 
+check-holdout:   ## 最终测量前自检仓库外的 holdout：格式校验 + 题目没出现在任何提示词里（不调模型）  用法: make check-holdout DOMAIN=nz_power HOLDOUT=$HOME/路径/文件.jsonl
+	@if [ -z "$(HOLDOUT)" ]; then echo '要指定 HOLDOUT=/路径/文件.jsonl（用 $$HOME，不要用 ~）'; exit 1; fi
+	@if [ ! -f "$(abspath $(HOLDOUT))" ]; then echo "找不到 $(abspath $(HOLDOUT))"; exit 1; fi
+	cd ai && $(QUERY_ENV) uv run python evals/run_eval.py --week 6 --dry --file "$(abspath $(HOLDOUT))"
+	cd ai && $(QUERY_ENV) CHEMQ_HOLDOUT_FILE="$(abspath $(HOLDOUT))" uv run pytest -q tests/test_prompt_rules.py -k external_holdout
+
 eval-rag:        ## 检索评测：向量 / BM25 / 混合 各自的 Hit@K、Recall@K（需先 make ingest；默认 8 条，K=5 对比）
 	@mkdir -p runs
 	cd ai && uv run python evals/run_retrieval.py --k $${K:-8} --json ../runs/retrieval-k$${K:-8}.json
