@@ -1,7 +1,7 @@
-# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ e739b4f
-# sha256 0b512ca838f6873853b5ba0bd969aef5f0f4a6c1429dd1ad45f0101d78179087  (do not edit here: change it upstream, then make sync-nz-metrics)
+# synced from nz-power-pipeline/semantic/nz_power_metrics.yaml @ b29ff51
+# sha256 5e7a55aefb12b60a60b5710612d47da7e723ead0a49192d03e14ca34aa023f17  (do not edit here: change it upstream, then make sync-nz-metrics)
 # NZ electricity price metrics. Query only the views listed under `views`; never query fact_* or dim_* tables.
-version: "2026-11.5"
+version: "2026-11.7"
 owner: "nz-power-pipeline"
 
 conventions:
@@ -15,7 +15,7 @@ conventions:
   generation: "Generation figures are EMI estimates (metered grid injections mapped to plants), in kWh per trading period; divide by 1000 for MWh. They come from mart_daily_generation and mart_daily_generation_weighted_price."
   cross_node_average: "An average of node prices across nodes (for example by island or zone, for one day or several) is computed one way only: average the mart_current_price rows in scope directly, so every node-period price counts once. Do not average per-node daily averages (avg_price) and do not average daily averages across days. It is unweighted (no volume data), and a node with missing periods, such as a new node on its first day, contributes fewer rows; the set of nodes can also change over time. It is supported, but always say that it is an unweighted simple average of node prices and give the number of nodes and the date range it covers; never present it as a market price, a reference price or the price consumers pay. Worked example: North Island on 2026-04-08 has 162 nodes and 7,755 price rows (WHU1101 first appears that day with 27 of 48 periods), and the average is 162.08 NZD/MWh. Nodes also differ a lot within an island on the same day (for example, daily average prices of South Island nodes on 2026-07-15 ran from 7.78 to 61.88 NZD/MWh)."
   reference_nodes: "New Zealand has nodal pricing and there is no single national price. The usual benchmark nodes are OTA2201 (Otahuhu, North Island) and BEN2201 (Benmore, South Island); this is market convention, not something stored in the data. For a question about the national or island price level, say there is no single national price and give the prices at OTA2201 and BEN2201; only if the user insists, add the all-node simple average together with the caveat in cross_node_average."
-  not_available: "There is no demand or consumption volume data, so demand-weighted (load-weighted) prices cannot be computed. weighted_avg_price is a different, supply-side measure: it is weighted by generation. Island, zone and region come from EMI's Network Supply Points table (snapshot 2026-11-06): group by island (NI/SI) or zone (UNI/LNI/CNI/USI/LSI) through v_dim_node (see cross_node_average for how to describe an average across nodes); region (distribution network area) is NULL for the 18 transmission-grid nodes, and zone is NULL for node KAW2201 (missing in the source)."
+  not_available: "There is no demand or consumption volume data, so demand-weighted (load-weighted) prices cannot be computed. weighted_avg_price is a different, supply-side measure: it is weighted by generation. Island, zone and region come from EMI's Network Supply Points table (snapshot 2026-11-06): group by island (NI/SI) or zone (UNI/LNI/CNI/USI/LSI) through v_dim_node (see cross_node_average for how to describe an average across nodes); region (distribution network area) is NULL for 19 nodes: the 18 transmission-grid nodes, which have no distribution network area, and KAW2201; KAW2201 also has a NULL zone (both are missing in the source)."
 
 views:
   - view: mart_current_price
@@ -138,7 +138,7 @@ metrics:
     pitfalls:
       - "Without a date it counts every node seen in the data up to the base date, including nodes that first appeared during the period. For the number of nodes on a given date, count the nodes whose first_seen_date is NULL or on or before that date. v_dim_node has no end date, so a node that stopped trading would still be counted."
       - "region is NULL for 19 nodes (the 18 transmission-grid nodes plus KAW2201) and zone is NULL for KAW2201, so these nodes are left out of counts by region or zone; an island total can be larger than the sum of its zones or regions."
-      - "region values name the area and the distribution company in brackets, for example Waikato (WEL Networks); match a company or area name with a pattern on region rather than an exact value."
+      - "region values name the area and the distribution company in brackets, for example Waikato (WEL Networks); when the user names only the company or the area, map it to the full region value listed in the catalog and filter on that exact value (for example 'WEL Networks' -> 'Waikato (WEL Networks)')."
 
   - name: Daily generation
     en: generation_kwh

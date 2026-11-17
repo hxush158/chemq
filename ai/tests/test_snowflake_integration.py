@@ -86,12 +86,49 @@ def test_snapshot_matches(sf_cursor):
         "SELECT * FROM mart_current_price LIMIT 1",
         "SELECT * FROM mart_daily_price LIMIT 1",
         "SELECT * FROM v_dim_node LIMIT 1",
+        "SELECT * FROM mart_daily_generation LIMIT 1",
+        "SELECT * FROM mart_daily_generation_weighted_price LIMIT 1",
     ],
-    ids=["current-price", "daily-price", "node"],
+    ids=["current-price", "daily-price", "node", "generation", "weighted-price"],
 )
 def test_mart_relations_readable(sf_cursor, sql):
     sf_cursor.execute(sql)
     assert sf_cursor.fetchone() is not None
+
+
+def test_allowlist_matches_the_relations_tested_here():
+    """领域包允许查询的对象变了，上面"能读"的清单也要跟着变：多一个少一个都算失败。"""
+    tested = {
+        "mart_current_price", "mart_daily_price", "v_dim_node",
+        "mart_daily_generation", "mart_daily_generation_weighted_price",
+    }
+    assert {name.split(".")[-1].lower() for name in domain().allowed_relations} == tested
+
+
+def test_generation_snapshot_matches(sf_cursor):
+    """发电两张表的核对值（nz-power 11/9 给的，DuckDB 服务库发布时核对的是同一组数）。"""
+    current_domain = domain()
+    snapshot = current_domain.config["eval"]["snapshot"]
+    as_of = {"as_of": current_domain.as_of}
+
+    sf_cursor.execute(
+        "SELECT SUM(generation_kwh) FROM mart_daily_generation WHERE trading_date <= %(as_of)s",
+        as_of,
+    )
+    (generation_sum,) = sf_cursor.fetchone()
+    assert Decimal(str(generation_sum)) == Decimal(snapshot["generation_kwh_sum"])
+
+    sf_cursor.execute(
+        """
+        SELECT COUNT(*), SUM(generation_kwh)
+        FROM mart_daily_generation_weighted_price
+        WHERE trading_date <= %(as_of)s
+        """,
+        as_of,
+    )
+    weighted_rows, weighted_sum = sf_cursor.fetchone()
+    assert weighted_rows == snapshot["weighted_rows"]
+    assert Decimal(str(weighted_sum)) == Decimal(snapshot["weighted_generation_kwh_sum"])
 
 
 @pytest.mark.parametrize(

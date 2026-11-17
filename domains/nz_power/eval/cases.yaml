@@ -361,7 +361,7 @@
   must_contain: [nodal, OTA2201, BEN2201]
 - set: golden
   id: N034
-  method: 字典 conventions.not_available 里 `region` 的说明：18 个输电网节点没有配电网区域，`region` 为 NULL
+  method: 字典 conventions.not_available 里 `region` 的说明：19 个节点的 `region` 为 NULL，即 18 个输电网节点（不属于任何配电网区域）加 KAW2201（源数据缺失，zone 也为 NULL）
   week: 3
   difficulty: medium
   intent: knowledge_lookup
@@ -369,7 +369,7 @@
   question: Why is the `region` field empty for some nodes?
   assert_type: citation
   must_contain: [transmission]
-  note: 11/14 Hui 标出和 holdout 太像，换成另一个字典条目
+  note: 11/14 Hui 标出和 holdout 太像，换成另一个字典条目。11/17 nz-power 口径审查：NULL 的是 19 个节点不是 18 个，字典 2026-11.7 已改。must_contain 只要求 transmission（主要原因），KAW2201 不作要求
 - set: golden
   id: N035
   method: 字典 first_seen_date 的 pitfall：NULL 表示数据开始时就已存在的节点，不是没有数据

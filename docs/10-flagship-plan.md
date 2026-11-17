@@ -163,7 +163,8 @@ ChemQ 重建服务库、重算标准答案后零 diff（N001 不在那 43 行里
 **交接（11/15 收工）**
 - 做了什么：第 1 步 golden 40 题定稿（N013 / N014 / N027 / N034 替换；电池口径按 nz-power 确认改了 N017–N019、N022），字典同步到 2026-11.5（`e739b4f`）。第 2 步基线 → 修四处根源 → 重跑：NZ golden 40/40（intent / exec / refuse / citation 全 1.0，单次运行），chem 20/20。修的是：Router 的 mixed 定义跟领域包走 + NZ 补 mixed / knowledge_lookup 示例；SQL 执行出错把报错交给模型修一次，再错拒答；缺时间范围时用整个数据覆盖范围（日期由数据决定的问题）；字典补列名说明和节点数指标（nz-power）。跨引擎比对不再把尾随 0 当差异。
 - 下一步：`make cross-check DOMAIN=nz_power DIALECT=snowflake` 和 `make review-golden DOMAIN=nz_power`（题目改过，要重跑）→ 送审表交 nz-power → 第 3 步最终测量（holdout 一次、golden 3 次、Snowflake、Agent）。
-- 待定：Agent 路径是否接指标字典（第 3 步前定）；字典 region 那条"用模糊匹配"和 text2sql 规则 14"只用精确值"冲突，等 nz-power 改措辞。
+- 口径审查（11/17）：nz-power 确认 39 题，N034 算法说明改为 19 个节点（字典 2026-11.7，`b29ff51`）；nz-power 从原始文件独立算 24 道数值题，全部和标准答案一致，N003 / N008 / N018 / N022 没有并列。
+- 已定（11/17）：Agent 路径不接指标字典（Hui 选 A）。NZ 的 Agent 没有查资料的工具，回答无法引用；最终测量照跑 40 题，结果表把 9 道引用类题（定义 4 + 数值加解释 5）单列为已知差距，可比的是其余 31 题。字典 region 的措辞冲突已在 2026-11.6（`817e607`）解决。
 
 **题目分类**（golden / holdout）
 
