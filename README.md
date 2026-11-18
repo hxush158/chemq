@@ -1,6 +1,6 @@
 # ChemQ
 
-**Natural-language analytics over process-industry operations data — built as a 6-week curriculum in AI application engineering.**
+**Natural-language analytics over process-industry operations data — a project for learning and reviewing AI application engineering.**
 
 The design is a desensitised rebuild of an AI analytics service I delivered for a chemical manufacturer in China; all data, names and client details are synthetic.
 
