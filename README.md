@@ -2,6 +2,8 @@
 
 **Natural-language analytics over process-industry operations data — built as a 6-week curriculum in AI application engineering.**
 
+The design is a desensitised rebuild of an AI analytics service I delivered for a chemical manufacturer in China; all data, names and client details are synthetic.
+
 A "ask your data" system for a chemical plant: someone types *"which sales region had the worst cash collection last month?"* and gets a number they can defend in a management meeting. The hard part is not generating SQL. It is making the answer **trustworthy** — correct metric definitions, no invented numbers, enforced data permissions, and a measurable accuracy figure you can put in front of a client.
 
 > 🇨🇳 中文版说明见 [README.zh.md](README.zh.md)。Code comments are in Chinese — this was built as a personal learning project.
